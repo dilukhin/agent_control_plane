@@ -117,19 +117,27 @@ Queue, logs, replay/evidence и временные данные не могут 
 
 Для каждого сохраняемого класса данных будущая реализация должна определять bounded retention по времени, объёму или жизненному циклу owner/task, а также правила безопасного удаления. Конкретные бюджеты и storage mechanism baseline не задаёт.
 
-## 13. Secrets и trust boundaries
+## 13. Версионирование, compatibility и migration
+
+Control protocol и сохраняемое (persisted) state должны иметь явную версию.
+
+Несовместимое изменение protocol или persisted state не может полагаться на неявное совпадение версий. Для него должна быть определена compatibility/migration policy: поддерживаемые версии, правила чтения/записи и способ перехода или явного отказа.
+
+Конкретные номера версий, форматы и migration mechanism будут определены вместе с соответствующими protocol/state designs.
+
+## 14. Secrets и trust boundaries
 
 Secrets, credentials, private keys, passwords, passphrases, authorization headers, cookies и relay/session tokens не должны попадать в обычные task payloads, logs, queues, receipts/evidence или Git.
 
 Trust boundaries между Web, control plane, workers, providers и transports должны быть явными. Передача секретов, если она вообще понадобится, должна иметь отдельный минимально привилегированный механизм, не маскирующийся под обычный task payload.
 
-## 14. Локальные платформы
+## 15. Локальные платформы
 
 Windows и Linux считаются first-class платформами локального runtime, пока scope явно не сужен отдельным решением.
 
 Это не означает, что уже выбран язык, runtime, packaging или способ установки.
 
-## 15. Что пока не принято
+## 16. Что пока не принято
 
 Следующие темы сознательно оставлены для roadmap и последующего design:
 
