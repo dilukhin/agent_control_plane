@@ -245,7 +245,17 @@ func TestConfirmedNotStartedReleasesConflictReservation(t *testing.T) {
 	if err := s.RegisterEvidence(proof); err != nil {
 		t.Fatal(err)
 	}
-	readyAgain, err := s.MarkNotStarted("op_a", executing.Revision, proof.ID, now.Add(4*time.Second))
+	readyAgain, err := s.MarkNotStarted("op_a", executing.Revision, evidence.Verification{
+		ID:                 "ver_not_started",
+		OperationID:        "op_a",
+		AttemptID:          "att_a",
+		PolicyRef:          "verify:v1",
+		EvidenceIDs:        []protocol.EvidenceID{proof.ID},
+		Verdict:            evidence.VerdictNotSatisfiedRetryable,
+		RetryExecutionSafe: true,
+		VerifiedAt:         now.Add(4 * time.Second),
+		VerifierActorID:    "verifier_1",
+	}, now.Add(4*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,5 +302,64 @@ func TestMessageDeduplicationAndCollision(t *testing.T) {
 	collision.Payload["intent"] = "different"
 	if _, err := s.RegisterMessage(collision); !errors.Is(err, ErrMessageIDCollision) {
 		t.Fatalf("expected message-id collision, got %v", err)
+	}
+}
+
+
+func TestMarkNotStartedRejectsUnverifiedEvidence(t *testing.T) {
+	s := NewStore()
+	now := time.Unix(100, 0)
+	op := readyOperation(t, s, "tsk_1", "op_1", "target:1", now)
+	executing, _, err := s.StartAttempt(op.Descriptor.ID, op.Revision, "att_1", "lease_1", "worker_1", "", now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := evidence.Record{
+		ID:            "ev_1",
+		TaskID:        "tsk_1",
+		OperationID:   "op_1",
+		AttemptID:     "att_1",
+		Kind:          evidence.KindWorkerReport,
+		SourceActorID: "worker_1",
+		ObservedAt:    now.Add(2 * time.Second),
+		SubjectRef:    "target:1",
+	}
+	if err := s.RegisterEvidence(rec); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.MarkNotStarted("op_1", executing.Revision, evidence.Verification{
+		ID:              "ver_1",
+		OperationID:     "op_1",
+		AttemptID:       "att_1",
+		PolicyRef:       "verify:v1",
+		EvidenceIDs:     []protocol.EvidenceID{"ev_1"},
+		Verdict:         evidence.VerdictInconclusive,
+		VerifiedAt:      now.Add(3 * time.Second),
+		VerifierActorID: "verifier_1",
+	}, now.Add(3*time.Second))
+	if err == nil {
+		t.Fatal("inconclusive verification must not release execution conflict")
+	}
+}
+
+func TestActiveAttemptContextRejectsStaleOwnership(t *testing.T) {
+	s := NewStore()
+	now := time.Unix(100, 0)
+	op := readyOperation(t, s, "tsk_1", "op_1", "target:1", now)
+	executing, attempt, err := s.StartAttempt(op.Descriptor.ID, op.Revision, "att_1", "lease_1", "worker_1", "", now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CheckActiveAttemptContext("op_1", attempt.ID, attempt.LeaseID, executing.LeaseGeneration, "worker_1"); err != nil {
+		t.Fatalf("active context rejected: %v", err)
+	}
+	if err := s.CheckActiveAttemptContext("op_1", attempt.ID, attempt.LeaseID, executing.LeaseGeneration-1, "worker_1"); !errors.Is(err, ErrStaleOwnership) {
+		t.Fatalf("expected stale generation rejection, got %v", err)
+	}
+	if err := s.CheckActiveAttemptContext("op_1", attempt.ID, "lease_stale", executing.LeaseGeneration, "worker_1"); !errors.Is(err, ErrStaleOwnership) {
+		t.Fatalf("expected stale lease rejection, got %v", err)
+	}
+	if err := s.CheckActiveAttemptContext("op_1", attempt.ID, attempt.LeaseID, executing.LeaseGeneration, "worker_stale"); !errors.Is(err, ErrStaleOwnership) {
+		t.Fatalf("expected stale owner rejection, got %v", err)
 	}
 }

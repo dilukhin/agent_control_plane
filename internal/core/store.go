@@ -18,6 +18,7 @@ var (
 	ErrConflictScope      = errors.New("mutation conflict scope is reserved")
 	ErrEvidenceScope      = errors.New("evidence does not match operation")
 	ErrMessageIDCollision = errors.New("message id collision")
+	ErrStaleOwnership     = errors.New("stale or invalid execution ownership")
 )
 
 type Store struct {
@@ -241,16 +242,22 @@ func (s *Store) MarkUnknownOutcome(id protocol.OperationID, expectedRevision uin
 	return s.transitionWithAttemptState(id, expectedRevision, state.OperationUnknownOutcome, state.AttemptUncertain, now)
 }
 
-func (s *Store) MarkNotStarted(id protocol.OperationID, expectedRevision uint64, proofID protocol.EvidenceID, now time.Time) (state.Operation, error) {
+func (s *Store) MarkNotStarted(id protocol.OperationID, expectedRevision uint64, verification evidence.Verification, now time.Time) (state.Operation, error) {
+	if err := verification.Validate(); err != nil {
+		return state.Operation{}, err
+	}
+	if verification.Verdict != evidence.VerdictNotSatisfiedRetryable || !verification.RetryExecutionSafe {
+		return state.Operation{}, errors.New("not-started transition requires retry-safe verification")
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	op, ok := s.operations[id]
 	if !ok {
 		return state.Operation{}, fmt.Errorf("%w: operation %s", ErrNotFound, id)
 	}
-	proof, ok := s.evidence[proofID]
-	if !ok || proof.OperationID != id || proof.AttemptID == "" || proof.AttemptID != op.ActiveAttemptID {
-		return state.Operation{}, ErrEvidenceScope
+	if err := s.validateVerificationLocked(op, verification); err != nil {
+		return state.Operation{}, err
 	}
 	activeID := op.ActiveAttemptID
 	next, err := state.Transition(op, expectedRevision, state.OperationReady, now)
@@ -335,17 +342,8 @@ func (s *Store) ApplyVerification(
 	if !ok {
 		return state.Operation{}, fmt.Errorf("%w: operation %s", ErrNotFound, id)
 	}
-	if verification.OperationID != id || verification.PolicyRef != op.Descriptor.VerificationPolicyRef {
-		return state.Operation{}, ErrEvidenceScope
-	}
-	if verification.AttemptID != "" && verification.AttemptID != op.ActiveAttemptID {
-		return state.Operation{}, ErrEvidenceScope
-	}
-	for _, evidenceID := range verification.EvidenceIDs {
-		record, ok := s.evidence[evidenceID]
-		if !ok || record.OperationID != id {
-			return state.Operation{}, ErrEvidenceScope
-		}
+	if err := s.validateVerificationLocked(op, verification); err != nil {
+		return state.Operation{}, err
 	}
 
 	var to state.OperationState
@@ -378,6 +376,48 @@ func (s *Store) ApplyVerification(
 	}
 	s.operations[id] = next
 	return next, nil
+}
+
+func (s *Store) validateVerificationLocked(op state.Operation, verification evidence.Verification) error {
+	if verification.OperationID != op.Descriptor.ID || verification.PolicyRef != op.Descriptor.VerificationPolicyRef {
+		return ErrEvidenceScope
+	}
+	if verification.AttemptID == "" || verification.AttemptID != op.ActiveAttemptID {
+		return ErrEvidenceScope
+	}
+	for _, evidenceID := range verification.EvidenceIDs {
+		record, ok := s.evidence[evidenceID]
+		if !ok || record.OperationID != op.Descriptor.ID || record.AttemptID != verification.AttemptID {
+			return ErrEvidenceScope
+		}
+	}
+	return nil
+}
+
+func (s *Store) CheckActiveAttemptContext(
+	id protocol.OperationID,
+	attemptID protocol.AttemptID,
+	leaseID protocol.LeaseID,
+	generation uint64,
+	owner protocol.ActorID,
+) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	op, ok := s.operations[id]
+	if !ok {
+		return fmt.Errorf("%w: operation %s", ErrNotFound, id)
+	}
+	if op.ActiveAttemptID == "" || op.ActiveAttemptID != attemptID || op.LeaseGeneration != generation {
+		return ErrStaleOwnership
+	}
+	attempt, ok := s.attempts[attemptID]
+	if !ok || attempt.LeaseID != leaseID || attempt.LeaseGeneration != generation || attempt.OwnerActorID != owner {
+		return ErrStaleOwnership
+	}
+	if op.State != state.OperationExecuting && op.State != state.OperationVerifying && op.State != state.OperationUnknownOutcome {
+		return ErrStaleOwnership
+	}
+	return nil
 }
 
 func (s *Store) EvidenceForOperation(id protocol.OperationID) []evidence.Record {
