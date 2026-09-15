@@ -287,6 +287,8 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 ### Gate B — storage
 
+**Статус: выполнено 2026-09-15.** ADR-0002 выбирает SQLite через pure-Go `modernc.org/sqlite` для durable R3 state, с WAL, `synchronous=FULL`, revision CAS, persisted conflict reservations, migrations и bounded retention.
+
 Открывается после минимального R2. Storage выбирается из фактических требований к persisted state, concurrency, migration и retention.
 
 ### Gate C — first transport
@@ -299,8 +301,8 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 ## 14. Следующая bounded task
 
-R1, Gate A и реализация R2 завершены. Для R2 остаётся отдельный validation gap: exact-toolchain smoke на Go 1.27.1.
+R1, Gate A, реализация R2 и Gate B завершены. Для R2 остаётся отдельный validation gap: exact-toolchain smoke на Go 1.27.1.
 
-Следующая независимая design-задача — **Gate B: storage decision**:
+Следующая задача — **R3: durable state, recovery и retention**:
 
-> На основании фактических требований R1/R2 сравнить минимальные durable-storage варианты для R3. Оценить atomic state transitions/revision CAS, restart/recovery, migrations/versioning, bounded retention/GC, concurrent access, Windows/Linux deployment и dependency footprint. Не выбирать daemon topology, transport или provider SDK. Exact Go 1.27.1 smoke R2 остаётся отдельной проверкой и не должен скрыто менять storage design.
+> Реализовать SQLite persistence boundary по ADR-0002: schema/migrations, atomic revision CAS, durable tasks/operations/attempts/messages/evidence/verifications, persisted mutation-scope reservations, restart recovery и bounded retention/GC. In-memory Store R2 не заменять transport-specific или SQL-specific логикой: persistence должен реализовать уже принятые core contracts. Не добавлять daemon topology, concrete transport или provider SDK.
