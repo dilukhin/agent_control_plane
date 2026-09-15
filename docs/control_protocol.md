@@ -132,6 +132,20 @@ Worker, provider и transport:
 
 Истечение lease не доказывает failure: если operation могла начаться, нужен reconciliation.
 
+### Conflict scope между разными operations
+
+Каждая изменяющая operation должна иметь domain-defined `conflict_scope`: один или несколько opaque keys, обозначающих ресурс/область, где параллельные mutations могут конфликтовать.
+
+Правила v1:
+
+- operations с пересекающимся `conflict_scope` не получают одновременно active mutation leases по умолчанию;
+- параллельность разрешается только explicit policy, подтверждающей concurrent-safe semantics;
+- `conflict_scope` не кодирует transport/provider identity;
+- если adapter не может надёжно определить scope для двух mutations над одним известным target, применяется консервативная сериализация либо explicit escalation;
+- read-only verification не блокируется mutation scope, если domain policy не требует иного.
+
+Конкретный формат ключа остаётся opaque для core; его стабильность и сравнимость задаёт domain adapter contract.
+
 ## Delivery semantics
 
 v1 не обещает exactly-once delivery.

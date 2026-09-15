@@ -191,7 +191,14 @@ Lease expiry прекращает authority worker на новые canonical tra
 - expected revision совпадает → transition допустим;
 - revision изменился → решение пересчитывается на новом actual state.
 
-Глобальная сериализация tasks не допускается как архитектурное предположение. Для конфликтующих external mutations нужен explicit conflict/ownership policy; concrete conflict-key schema откладывается до R2.
+Глобальная сериализация tasks не допускается как архитектурное предположение.
+
+Для разных mutation operations используется domain-defined opaque `conflict_scope`:
+
+- пересекающиеся scopes по умолчанию не имеют одновременно active mutation leases;
+- explicit concurrent-safe policy может разрешить параллельность;
+- если scope для двух mutations над одним известным target неизвестен, применяется консервативная сериализация либо escalation;
+- concrete encoding conflict key не является частью state model и может быть выбран на R2, но семантика взаимного исключения является частью R1.
 
 ## Cancellation
 
