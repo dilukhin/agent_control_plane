@@ -1,7 +1,7 @@
 ---
 document_type: evidence_model
-document_version: 0.1
-status: proposed
+document_version: 1.0
+status: active
 updated_at: 2026-09-15
 ---
 

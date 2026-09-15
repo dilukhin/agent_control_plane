@@ -1,8 +1,8 @@
 ---
 document_type: control_protocol
-document_version: 0.1
+document_version: 1.0
 protocol_version: "1.0"
-status: proposed
+status: active
 updated_at: 2026-09-15
 ---
 
@@ -41,6 +41,29 @@ updated_at: 2026-09-15
 3. `operation_id` сохраняется между retry одного логического намерения.
 4. Новый semantic retry создаёт новый `attempt_id`.
 5. Transport retransmission сохраняет исходные `message_id` и `attempt_id`.
+
+
+## Operation descriptor
+
+Каждая operation имеет canonical descriptor, сформированный/валидированный control-side policy, а не worker.
+
+Минимальные поля v1:
+
+- `operation_id`;
+- `task_id`;
+- `operation_name` — стабильное логическое имя/класс действия;
+- `target_ref` — opaque reference на логический target без credentials;
+- `effect_class`: `read_only` или `mutation`;
+- `conflict_scope` — список opaque keys; для mutation обязателен хотя бы один scope либо явная policy, доказывающая отсутствие shared target;
+- `idempotency_mode`: `unknown`, `idempotent` или `conditional`;
+- `verification_policy_ref` — policy id/version для проверки результата;
+- `authorization_policy_ref` — policy id/version для допуска execution.
+
+`idempotency_mode=conditional` означает, что retry safety зависит от дополнительных target/adaptor условий, например idempotency key или fencing.
+
+Worker/provider не может повысить `idempotency_mode`, сузить `conflict_scope`, изменить `effect_class` или подменить verification/authorization policy своим report.
+
+Descriptor сохраняется вместе с operation и версионируется как часть persisted state. Изменение descriptor, меняющее логическое намерение или target, создаёт новую operation identity, а не retry старой.
 
 ## Correlation
 

@@ -1,7 +1,7 @@
 ---
 document_type: security_model
-document_version: 0.1
-status: proposed
+document_version: 1.0
+status: active
 updated_at: 2026-09-15
 ---
 
@@ -141,6 +141,8 @@ Worker/provider adapter объявляет capabilities отдельно от mo
 - result verified.
 
 Наличие возможности не равно разрешению её использовать.
+
+Canonical operation descriptor (`effect_class`, `target_ref`, `conflict_scope`, `idempotency_mode`, authorization/verification policy refs) формируется или валидируется control-side policy. Недоверенный worker/provider не может ослабить эти ограничения своим payload или report.
 
 Аналогично worker/provider не является доверенным источником `conflict_scope`: scope для mutual exclusion вычисляется или валидируется control-side domain policy/adapter.
 
