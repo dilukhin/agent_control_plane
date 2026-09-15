@@ -4,9 +4,9 @@
 
 ## Текущий статус
 
-Foundation, R1 и Gate A завершены. Приняты базовые control contracts v1; для reference core R2 выбран Go 1.27.x, pure-Go и stdlib-first. Следующий этап — минимальный transport-agnostic in-memory core R2.
+Foundation, R1 и Gate A завершены. Минимальный reference core R2 реализован на pure Go: типизированные protocol/state/evidence contracts, in-memory state store, revision/CAS, attempt/lease ownership, conflict scopes, duplicate-message handling и unknown-outcome/reconciliation semantics.
 
-Product implementation пока отсутствует до начала R2; storage, daemon/client/server, transport implementation и model router не выбраны.
+Локальные `go test`, `go vet`, `go test -race` и pure-Go cross-build для Windows/Linux прошли на доступном Go 1.23.2. Целевой baseline остаётся Go 1.27.x; точный smoke на Go 1.27.1 в текущем ChatGPT Web runtime не выполнен из-за отсутствия этого toolchain и сетевого доступа к официальному архиву. Storage, daemon/client/server, transport implementation и model router пока не выбраны.
 
 ## Ответственность проекта
 
