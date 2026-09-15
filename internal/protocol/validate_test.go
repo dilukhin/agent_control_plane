@@ -40,7 +40,7 @@ func TestEnvelopeRejectsSensitiveFields(t *testing.T) {
 		TaskID:          "tsk_1",
 		OperationID:     "op_1",
 		CorrelationID:   "corr_1",
-		Actor:            Actor{ID: "actor_1", Role: "controller"},
+		Actor:           Actor{ID: "actor_1", Role: "controller"},
 		IssuedAt:        time.Now(),
 		Payload: map[string]any{
 			"nested": map[string]any{"api_token": "should-never-be-here"},
@@ -65,14 +65,13 @@ func TestEnvelopeRejectsVersionMismatch(t *testing.T) {
 		TaskID:          "tsk_1",
 		OperationID:     "op_1",
 		CorrelationID:   "corr_1",
-		Actor:            Actor{ID: "actor_1", Role: "controller"},
+		Actor:           Actor{ID: "actor_1", Role: "controller"},
 		IssuedAt:        time.Now(),
 	}
 	if err := env.Validate(); !errors.Is(err, ErrInvalidProtocolVersion) {
 		t.Fatalf("expected version error, got %v", err)
 	}
 }
-
 
 func TestEnvelopeRejectsNonCanonicalPayloadTypes(t *testing.T) {
 	type hidden struct {
@@ -86,7 +85,7 @@ func TestEnvelopeRejectsNonCanonicalPayloadTypes(t *testing.T) {
 		TaskID:          "tsk_1",
 		OperationID:     "op_1",
 		CorrelationID:   "corr_1",
-		Actor:            Actor{ID: "actor_1", Role: "controller"},
+		Actor:           Actor{ID: "actor_1", Role: "controller"},
 		IssuedAt:        time.Now(),
 		Payload:         map[string]any{"opaque": hidden{Password: "must-not-bypass-validation"}},
 	}

@@ -305,7 +305,6 @@ func TestMessageDeduplicationAndCollision(t *testing.T) {
 	}
 }
 
-
 func TestMarkNotStartedRejectsUnverifiedEvidence(t *testing.T) {
 	s := NewStore()
 	now := time.Unix(100, 0)
@@ -363,7 +362,6 @@ func TestActiveAttemptContextRejectsStaleOwnership(t *testing.T) {
 		t.Fatalf("expected stale owner rejection, got %v", err)
 	}
 }
-
 
 func TestOperationDescriptorIsIsolatedFromCallerMutation(t *testing.T) {
 	s := NewStore()

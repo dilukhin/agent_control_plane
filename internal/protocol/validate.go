@@ -10,7 +10,7 @@ var (
 	ErrInvalidProtocolVersion = errors.New("invalid protocol version")
 	ErrInvalidDescriptor      = errors.New("invalid operation descriptor")
 	ErrSensitiveField         = errors.New("sensitive field is not allowed")
-	ErrInvalidPayloadValue   = errors.New("invalid canonical payload value")
+	ErrInvalidPayloadValue    = errors.New("invalid canonical payload value")
 	ErrUnsupportedMessage     = errors.New("unsupported message")
 )
 
