@@ -4,9 +4,9 @@
 
 ## Текущий статус
 
-Репозиторий находится на стадии foundation. Здесь ещё нет product implementation, roadmap, выбранного языка/framework, runtime, protocol implementation, storage, daemon/client/server или model router.
+Foundation-этап завершён. Проект находится на стадии roadmap/design: последовательность дальнейшей разработки зафиксирована в [`docs/roadmap.md`](docs/roadmap.md).
 
-Следующий отдельный этап проектирования должен определить roadmap. Идеи из предыдущих обсуждений не считаются реализованными возможностями или автоматически принятыми требованиями.
+Product implementation, выбранный язык/framework, runtime, protocol implementation, storage, daemon/client/server, transport implementation и model router пока отсутствуют. Их выбор выполняется только в соответствующих decision gates roadmap.
 
 ## Ответственность проекта
 
@@ -36,11 +36,13 @@
 
 Control protocol должен быть отделён от transport. HTTPS relay, VPS, P2P/NAT traversal, локальный IPC и другие каналы могут рассматриваться как transports одного логического протокола, но конкретная transport architecture пока не выбрана.
 
-## Нормативный baseline
+## Нормативные документы
 
 Канонический baseline проекта: [`docs/project_baseline.md`](docs/project_baseline.md).
 
-Он фиксирует только устойчивые инварианты и границы, необходимые до roadmap. Если утверждение отсутствует в baseline либо явно отмечено как кандидат/идея, оно не считается принятым архитектурным решением.
+Последовательность проектирования и реализации: [`docs/roadmap.md`](docs/roadmap.md).
+
+Baseline фиксирует устойчивые инварианты и границы. Roadmap задаёт этапы и decision gates, но не превращает ещё не принятые варианты реализации в архитектурные решения.
 
 ## Разработка
 
