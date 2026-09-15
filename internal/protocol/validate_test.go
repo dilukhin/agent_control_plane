@@ -72,3 +72,30 @@ func TestEnvelopeRejectsVersionMismatch(t *testing.T) {
 		t.Fatalf("expected version error, got %v", err)
 	}
 }
+
+
+func TestEnvelopeRejectsNonCanonicalPayloadTypes(t *testing.T) {
+	type hidden struct {
+		Password string
+	}
+	env := Envelope{
+		ProtocolVersion: ProtocolVersion,
+		MessageID:       "msg_1",
+		MessageType:     MessageCommand,
+		MessageName:     "operation.offer",
+		TaskID:          "tsk_1",
+		OperationID:     "op_1",
+		CorrelationID:   "corr_1",
+		Actor:            Actor{ID: "actor_1", Role: "controller"},
+		IssuedAt:        time.Now(),
+		Payload:         map[string]any{"opaque": hidden{Password: "must-not-bypass-validation"}},
+	}
+	if err := env.Validate(); !errors.Is(err, ErrInvalidPayloadValue) {
+		t.Fatalf("expected non-canonical payload rejection, got %v", err)
+	}
+
+	env.Payload = map[string]any{"items": []any{"ok", 1, true, nil}}
+	if err := env.Validate(); err != nil {
+		t.Fatalf("canonical JSON-like payload rejected: %v", err)
+	}
+}

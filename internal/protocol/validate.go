@@ -10,6 +10,7 @@ var (
 	ErrInvalidProtocolVersion = errors.New("invalid protocol version")
 	ErrInvalidDescriptor      = errors.New("invalid operation descriptor")
 	ErrSensitiveField         = errors.New("sensitive field is not allowed")
+	ErrInvalidPayloadValue   = errors.New("invalid canonical payload value")
 	ErrUnsupportedMessage     = errors.New("unsupported message")
 )
 
@@ -97,7 +98,10 @@ func (e Envelope) Validate() error {
 
 func ValidateNoSensitiveFields(v any) error {
 	switch x := v.(type) {
-	case nil:
+	case nil, bool, string,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64:
 		return nil
 	case map[string]any:
 		for key, value := range x {
@@ -108,14 +112,17 @@ func ValidateNoSensitiveFields(v any) error {
 				return err
 			}
 		}
+		return nil
 	case []any:
 		for _, value := range x {
 			if err := ValidateNoSensitiveFields(value); err != nil {
 				return err
 			}
 		}
+		return nil
+	default:
+		return fmt.Errorf("%w: %T", ErrInvalidPayloadValue, v)
 	}
-	return nil
 }
 
 func isForbiddenKey(key string) bool {
