@@ -7,6 +7,7 @@
 - Выполняй только явно поставленную bounded task; неожиданную архитектурную развилку возвращай в control plane с evidence, а не решай скрыто.
 - Не создавай roadmap и не расширяй scope, если это не является текущей задачей.
 - Не добавляй language/framework, dependencies, package manager, database, daemon/client/server, protocol implementation, model router или CI «на будущее».
+- Go baseline и правила toolchain validation смотри в `docs/decisions/0001-implementation-stack.md` и `docs/development_environment.md`. Не понижай repository Go requirement ради более старого runtime. Перед exact validation проверяй фактический `go version`; side-by-side toolchain в Web runtime допустим, но его наличие между диалогами не предполагается.
 - Сохраняй границы с `opencode_setup`, `ssh_relay`, `agent-safe` и `github-connector-knowledge`; общий механизм не дублируй project-specific реализацией без доказанной необходимости.
 - Для mutation сначала фиксируй target/expected state, затем делай минимальное изменение и проверяй actual state. Timeout/disconnect означает unknown outcome до проверки.
 - Не помещай secrets, credentials, private keys, passwords, passphrases, authorization headers, cookies или relay/session tokens в код, task payloads, логи, receipts/evidence и Git.

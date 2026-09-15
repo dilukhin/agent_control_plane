@@ -88,7 +88,7 @@ Design должен явно покрыть:
 
 ## 5. Этап R2 — Minimal reference core
 
-**Статус: реализовано 2026-09-15; target-toolchain smoke pending.** Reference core покрывает protocol validation, operation state machine, revision/CAS, in-memory state/evidence/message store, attempt/lease ownership, mutation conflict scopes, duplicate-message handling и explicit unknown-outcome/retry-safety path. Локальные tests/vet/race и Windows/Linux pure-Go cross-build прошли на доступном Go 1.23.2. Точный запуск на целевом Go 1.27.1 в текущем Web runtime не выполнен.
+**Статус: выполнено и проверено.** Reference core покрывает protocol validation, operation state machine, revision/CAS, in-memory state/evidence/message store, attempt/lease ownership, mutation conflict scopes, duplicate-message handling и explicit unknown-outcome/retry-safety path. Exact validation на Go 1.27.1 выполнена 2026-09-16: tests/vet/race, Windows/Linux pure-Go cross-build и gofmt прошли; см. `docs/validation/r2-go-1.27.1.md`.
 
 ### Цель
 
@@ -301,7 +301,7 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 ## 14. Следующая bounded task
 
-R1, Gate A, реализация R2 и Gate B завершены. Для R2 остаётся отдельный validation gap: exact-toolchain smoke на Go 1.27.1.
+R1, Gate A, R2 и Gate B завершены. Exact-toolchain validation R2 на Go 1.27.1 также выполнена.
 
 Следующая задача — **R3: durable state, recovery и retention**:
 

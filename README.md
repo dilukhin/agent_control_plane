@@ -6,7 +6,7 @@
 
 Foundation, R1 и Gate A завершены. Минимальный reference core R2 реализован на pure Go: типизированные protocol/state/evidence contracts, in-memory state store, revision/CAS, attempt/lease ownership, conflict scopes, duplicate-message handling и unknown-outcome/reconciliation semantics.
 
-Локальные `go test`, `go vet`, `go test -race` и pure-Go cross-build для Windows/Linux прошли на доступном Go 1.23.2. Целевой baseline остаётся Go 1.27.x; точный smoke на Go 1.27.1 в текущем ChatGPT Web runtime не выполнен из-за отсутствия этого toolchain и сетевого доступа к официальному архиву.
+R2 проверен на точном target toolchain Go 1.27.1: `go test ./...`, `go vet ./...`, `go test -race ./...`, pure-Go cross-build для Windows/Linux и `gofmt` прошли. Validation record: [`docs/validation/r2-go-1.27.1.md`](docs/validation/r2-go-1.27.1.md).
 
 Gate B завершён: для R3 выбран SQLite через pure-Go `modernc.org/sqlite`; canonical storage проектируется как локальная transactional DB с WAL, FULL durability, revision CAS, persisted conflict reservations, migrations и bounded retention. Daemon/client/server topology, transport implementation и model router пока не выбраны.
 
@@ -51,7 +51,8 @@ Control protocol должен быть отделён от transport. HTTPS rela
 - [`docs/evidence_model.md`](docs/evidence_model.md) — evidence и actual-state verification;
 - [`docs/security_model.md`](docs/security_model.md) — trust boundaries и security invariants;
 - [`docs/decisions/0001-implementation-stack.md`](docs/decisions/0001-implementation-stack.md) — Gate A: Go 1.27.x для R2;
-- [`docs/decisions/0002-durable-storage.md`](docs/decisions/0002-durable-storage.md) — Gate B: SQLite/modernc для R3.
+- [`docs/decisions/0002-durable-storage.md`](docs/decisions/0002-durable-storage.md) — Gate B: SQLite/modernc для R3;
+- [`docs/development_environment.md`](docs/development_environment.md) — toolchain/environment validation rules.
 
 Baseline фиксирует устойчивые инварианты и границы. Roadmap задаёт этапы и decision gates. R1-документы являются владельцами принятых contract-level решений; отложенные в них темы не считаются выбранной реализацией.
 
