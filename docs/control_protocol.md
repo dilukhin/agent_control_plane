@@ -130,7 +130,13 @@ Worker, provider и transport:
 
 Одновременно authoritative только одна generation. Event от stale lease сохраняется как evidence и не применяется автоматически как canonical transition.
 
-Истечение lease не доказывает failure: если operation могла начаться, нужен reconciliation.
+Истечение lease не доказывает failure и не доказывает, что старый executor физически прекратил side effects. Перед выдачей нового mutation lease control plane должен установить хотя бы одно из условий:
+
+- предыдущий executor подтверждённо quiescent/terminated и больше не способен изменить target;
+- target/adapter поддерживает fencing token, который делает stale generation физически неспособной выполнить mutation;
+- operation имеет подтверждённую target-level idempotency/concurrency semantics, безопасную для нового attempt.
+
+Одного истечения lease или потери heartbeat недостаточно для re-dispatch mutation.
 
 ### Conflict scope между разными operations
 
@@ -141,6 +147,7 @@ Worker, provider и transport:
 - operations с пересекающимся `conflict_scope` не получают одновременно active mutation leases по умолчанию;
 - параллельность разрешается только explicit policy, подтверждающей concurrent-safe semantics;
 - `conflict_scope` не кодирует transport/provider identity;
+- `conflict_scope` вычисляется/валидируется доверенным control-side domain policy или adapter; worker/provider не может сам выбрать scope, чтобы обойти взаимное исключение;
 - если adapter не может надёжно определить scope для двух mutations над одним известным target, применяется консервативная сериализация либо explicit escalation;
 - read-only verification не блокируется mutation scope, если domain policy не требует иного.
 
@@ -171,7 +178,7 @@ Semantic retry:
 - получает новый `attempt_id`, `message_id` и lease generation;
 - фиксирует `retry_of_attempt_id`.
 
-Retry разрешён только после проверки actual state, idempotency и ownership предыдущей попытки.
+Retry разрешён только после проверки actual state, idempotency и ownership предыдущей попытки, а для mutation — также после доказательства execution quiescence либо наличия target-level fencing/idempotency, исключающих поздний конфликт старого attempt.
 
 Если target поддерживает idempotency key, adapter может использовать стабильный ключ на основе `operation_id`; поддержка не предполагается по умолчанию.
 

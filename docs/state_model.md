@@ -182,6 +182,8 @@ Event от stale generation:
 
 Lease expiry прекращает authority worker на новые canonical transitions, но не доказывает остановку уже начатой mutation.
 
+Поэтому новый mutation attempt не может получить active lease только на основании expiry. До re-dispatch требуется подтвердить, что старый executor больше не способен изменить target, либо применить target-level fencing/idempotency mechanism, делающий stale execution безопасным.
+
 ## Revision и concurrency
 
 Каждый canonical transition увеличивает `revision`.
@@ -196,6 +198,7 @@ Lease expiry прекращает authority worker на новые canonical tra
 Для разных mutation operations используется domain-defined opaque `conflict_scope`:
 
 - пересекающиеся scopes по умолчанию не имеют одновременно active mutation leases;
+- scope вычисляется/валидируется доверенным control-side domain policy/adapter, а не принимается как authoritative worker input;
 - explicit concurrent-safe policy может разрешить параллельность;
 - если scope для двух mutations над одним известным target неизвестен, применяется консервативная сериализация либо escalation;
 - concrete encoding conflict key не является частью state model и может быть выбран на R2, но семантика взаимного исключения является частью R1.

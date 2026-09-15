@@ -142,6 +142,8 @@ Worker/provider adapter объявляет capabilities отдельно от mo
 
 Наличие возможности не равно разрешению её использовать.
 
+Аналогично worker/provider не является доверенным источником `conflict_scope`: scope для mutual exclusion вычисляется или валидируется control-side domain policy/adapter.
+
 ## Task/content как недоверенные данные
 
 Task text, repository files, web pages, model output и worker-generated text могут содержать инструкции, конфликтующие с control policy.
@@ -169,6 +171,8 @@ Task text, repository files, web pages, model output и worker-generated text м
 - target idempotency только при подтверждённой поддержке.
 
 Повтор старой команды от stale lease не становится новой authorized mutation.
+
+Lease generation является control-plane fencing для authority, но не обязательно physical fencing target. Если stale worker технически ещё может выполнить side effect, новый mutation attempt запрещён до подтверждённого quiescence старого executor либо до применения target-level fencing/idempotency, исключающих конфликт.
 
 ## Unknown outcome как security property
 

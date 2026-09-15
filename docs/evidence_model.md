@@ -138,6 +138,8 @@ Worker может сообщить success, failure, partial result или uncer
 
 Проверяется поведение/состояние, а не только exit code изменяющей команды.
 
+Сам факт, что desired state наблюдается после attempt, не всегда доказывает причинность именно этого attempt: target мог быть изменён параллельным actor или внешней системой. Verification policy должна явно определить, достаточно ли state satisfaction для цели operation или требуется causal attribution (например, target revision, request/idempotency key, audit event или иной domain-specific marker). При требуемой, но недоказанной причинности verdict остаётся `inconclusive` либо policy-defined non-success.
+
 ## Unknown outcome reconciliation
 
 Для `unknown_outcome` verifier:
