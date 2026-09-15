@@ -279,6 +279,8 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 ### Gate A — implementation stack
 
+**Статус: выполнено 2026-09-15.** ADR-0001 выбирает Go 1.27.x, pure-Go и stdlib-first для reference core R2.
+
 Открывается после R1. Нужен отдельный design decision с аргументами по Windows/Linux, tests, packaging и contract modeling.
 
 ### Gate B — storage
@@ -295,10 +297,8 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 ## 14. Следующая bounded task
 
-R1 завершён и принят.
+R1 и Gate A завершены и приняты.
 
-Следующая задача — **Gate A: implementation stack decision**:
+Следующая задача — **R2: minimal reference core**:
 
-> Сравнить минимальные implementation stack candidates для reference core R2 и принять отдельное design decision. Оценить Windows/Linux, типизацию protocol/state contracts, concurrency/state-machine testability, packaging/deployment, dependency footprint и стоимость поддержки локальных workers. Не выбирать storage, concrete transport, provider SDK или daemon topology раньше соответствующих gates.
-
-После принятия Gate A начать R2 с минимального transport-agnostic in-memory core и тестов contract/state invariants.
+> Реализовать на Go 1.27.x минимальный transport-agnostic in-memory core для принятых protocol/state/evidence contracts. Не добавлять storage/database, concrete transport, provider SDK или daemon topology. Сначала реализовать typed contracts, validation, state transition engine, revision/CAS, operation/attempt identity, leases/conflict scopes и evidence registration; покрыть их targeted tests.
