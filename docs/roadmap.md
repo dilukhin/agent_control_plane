@@ -88,6 +88,8 @@ Design должен явно покрыть:
 
 ## 5. Этап R2 — Minimal reference core
 
+**Статус: реализовано 2026-09-15; target-toolchain smoke pending.** Reference core покрывает protocol validation, operation state machine, revision/CAS, in-memory state/evidence/message store, attempt/lease ownership, mutation conflict scopes, duplicate-message handling и explicit unknown-outcome/retry-safety path. Локальные tests/vet/race и Windows/Linux pure-Go cross-build прошли на доступном Go 1.23.2. Точный запуск на целевом Go 1.27.1 в текущем Web runtime не выполнен.
+
 ### Цель
 
 Реализовать минимальное transport-agnostic ядро, проверяющее design R1.
@@ -297,8 +299,8 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 ## 14. Следующая bounded task
 
-R1 и Gate A завершены и приняты.
+R1, Gate A и реализация R2 завершены. Для R2 остаётся отдельный validation gap: exact-toolchain smoke на Go 1.27.1.
 
-Следующая задача — **R2: minimal reference core**:
+Следующая независимая design-задача — **Gate B: storage decision**:
 
-> Реализовать на Go 1.27.x минимальный transport-agnostic in-memory core для принятых protocol/state/evidence contracts. Не добавлять storage/database, concrete transport, provider SDK или daemon topology. Сначала реализовать typed contracts, validation, state transition engine, revision/CAS, operation/attempt identity, leases/conflict scopes и evidence registration; покрыть их targeted tests.
+> На основании фактических требований R1/R2 сравнить минимальные durable-storage варианты для R3. Оценить atomic state transitions/revision CAS, restart/recovery, migrations/versioning, bounded retention/GC, concurrent access, Windows/Linux deployment и dependency footprint. Не выбирать daemon topology, transport или provider SDK. Exact Go 1.27.1 smoke R2 остаётся отдельной проверкой и не должен скрыто менять storage design.
