@@ -4,9 +4,9 @@
 
 ## Текущий статус
 
-Foundation и этап R1 завершены. Приняты базовые control contracts v1: identity/correlation, state model, evidence/verification и security/trust boundaries. Следующий этап — Gate A: обоснованный выбор минимального implementation stack перед R2.
+Foundation, R1 и Gate A завершены. Приняты базовые control contracts v1; для reference core R2 выбран Go 1.27.x, pure-Go и stdlib-first. Следующий этап — минимальный transport-agnostic in-memory core R2.
 
-Product implementation, storage, daemon/client/server, transport implementation и model router пока отсутствуют. Язык/framework/runtime ещё не выбран; выбор выполняется в Gate A roadmap.
+Product implementation пока отсутствует до начала R2; storage, daemon/client/server, transport implementation и model router не выбраны.
 
 ## Ответственность проекта
 
@@ -47,7 +47,8 @@ Control protocol должен быть отделён от transport. HTTPS rela
 - [`docs/control_protocol.md`](docs/control_protocol.md) — control protocol v1;
 - [`docs/state_model.md`](docs/state_model.md) — canonical state machine;
 - [`docs/evidence_model.md`](docs/evidence_model.md) — evidence и actual-state verification;
-- [`docs/security_model.md`](docs/security_model.md) — trust boundaries и security invariants.
+- [`docs/security_model.md`](docs/security_model.md) — trust boundaries и security invariants;
+- [`docs/decisions/0001-implementation-stack.md`](docs/decisions/0001-implementation-stack.md) — Gate A: Go 1.27.x для R2.
 
 Baseline фиксирует устойчивые инварианты и границы. Roadmap задаёт этапы и decision gates. R1-документы являются владельцами принятых contract-level решений; отложенные в них темы не считаются выбранной реализацией.
 
