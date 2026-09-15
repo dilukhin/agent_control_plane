@@ -363,3 +363,33 @@ func TestActiveAttemptContextRejectsStaleOwnership(t *testing.T) {
 		t.Fatalf("expected stale owner rejection, got %v", err)
 	}
 }
+
+
+func TestOperationDescriptorIsIsolatedFromCallerMutation(t *testing.T) {
+	s := NewStore()
+	now := time.Unix(100, 0)
+	if _, err := s.CreateTask("tsk_1", now); err != nil {
+		t.Fatal(err)
+	}
+	d := desc("tsk_1", "op_1", "target:original")
+	created, err := s.CreateOperation(d, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.ConflictScope[0] = "target:mutated-input"
+	created.Descriptor.ConflictScope[0] = "target:mutated-return"
+
+	stored, ok := s.GetOperation("op_1")
+	if !ok {
+		t.Fatal("operation missing")
+	}
+	if got := stored.Descriptor.ConflictScope[0]; got != "target:original" {
+		t.Fatalf("stored conflict scope mutated through caller alias: %q", got)
+	}
+
+	stored.Descriptor.ConflictScope[0] = "target:mutated-getter"
+	again, _ := s.GetOperation("op_1")
+	if got := again.Descriptor.ConflictScope[0]; got != "target:original" {
+		t.Fatalf("stored conflict scope mutated through getter alias: %q", got)
+	}
+}

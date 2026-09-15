@@ -44,6 +44,19 @@ func NewStore() *Store {
 	}
 }
 
+func cloneDescriptor(d protocol.OperationDescriptor) protocol.OperationDescriptor {
+	out := d
+	if d.ConflictScope != nil {
+		out.ConflictScope = append([]string(nil), d.ConflictScope...)
+	}
+	return out
+}
+
+func cloneOperation(op state.Operation) state.Operation {
+	op.Descriptor = cloneDescriptor(op.Descriptor)
+	return op
+}
+
 func (s *Store) RegisterMessage(env protocol.Envelope) (bool, error) {
 	if err := env.Validate(); err != nil {
 		return false, err
@@ -119,6 +132,7 @@ func (s *Store) GetTask(id protocol.TaskID) (state.Task, bool) {
 }
 
 func (s *Store) CreateOperation(d protocol.OperationDescriptor, now time.Time) (state.Operation, error) {
+	d = cloneDescriptor(d)
 	if err := d.Validate(); err != nil {
 		return state.Operation{}, err
 	}
@@ -141,14 +155,17 @@ func (s *Store) CreateOperation(d protocol.OperationDescriptor, now time.Time) (
 		UpdatedAt:  now,
 	}
 	s.operations[d.ID] = op
-	return op, nil
+	return cloneOperation(op), nil
 }
 
 func (s *Store) GetOperation(id protocol.OperationID) (state.Operation, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	op, ok := s.operations[id]
-	return op, ok
+	if !ok {
+		return state.Operation{}, false
+	}
+	return cloneOperation(op), true
 }
 
 func (s *Store) MarkReady(id protocol.OperationID, expectedRevision uint64, now time.Time) (state.Operation, error) {
@@ -163,7 +180,7 @@ func (s *Store) MarkReady(id protocol.OperationID, expectedRevision uint64, now 
 		return state.Operation{}, err
 	}
 	s.operations[id] = next
-	return next, nil
+	return cloneOperation(next), nil
 }
 
 func (s *Store) StartAttempt(
@@ -211,7 +228,7 @@ func (s *Store) StartAttempt(
 	s.operations[id] = next
 	s.attempts[attemptID] = attempt
 	s.leases[leaseID] = struct{}{}
-	return next, attempt, nil
+	return cloneOperation(next), attempt, nil
 }
 
 func (s *Store) BeginVerification(id protocol.OperationID, expectedRevision uint64, now time.Time) (state.Operation, error) {
@@ -235,7 +252,7 @@ func (s *Store) BeginVerification(id protocol.OperationID, expectedRevision uint
 		s.attempts[activeID] = attempt
 	}
 	s.operations[id] = next
-	return next, nil
+	return cloneOperation(next), nil
 }
 
 func (s *Store) MarkUnknownOutcome(id protocol.OperationID, expectedRevision uint64, now time.Time) (state.Operation, error) {
@@ -271,7 +288,7 @@ func (s *Store) MarkNotStarted(id protocol.OperationID, expectedRevision uint64,
 		s.attempts[activeID] = attempt
 	}
 	s.operations[id] = next
-	return next, nil
+	return cloneOperation(next), nil
 }
 
 func (s *Store) transitionWithAttemptState(
@@ -299,7 +316,7 @@ func (s *Store) transitionWithAttemptState(
 		s.attempts[activeID] = attempt
 	}
 	s.operations[id] = next
-	return next, nil
+	return cloneOperation(next), nil
 }
 
 func (s *Store) RegisterEvidence(record evidence.Record) error {
@@ -375,7 +392,7 @@ func (s *Store) ApplyVerification(
 		s.attempts[activeID] = attempt
 	}
 	s.operations[id] = next
-	return next, nil
+	return cloneOperation(next), nil
 }
 
 func (s *Store) validateVerificationLocked(op state.Operation, verification evidence.Verification) error {
