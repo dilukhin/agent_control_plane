@@ -46,6 +46,8 @@ Roadmap не заменяет `docs/project_baseline.md`. Baseline остаёт�
 
 ## 4. Этап R1 — Control contracts
 
+**Статус: выполнено 2026-09-15.** Приняты `docs/control_protocol.md`, `docs/state_model.md`, `docs/evidence_model.md` и `docs/security_model.md` версии 1.0.
+
 ### Цель
 
 Зафиксировать логический контракт control plane до выбора runtime stack.
@@ -293,8 +295,10 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 ## 14. Следующая bounded task
 
-Следующая задача после принятия этого roadmap:
+R1 завершён и принят.
 
-> Выполнить R1: спроектировать version 1 control protocol, state model, evidence model и security model как согласованный design package. Не выбирать implementation language, database или concrete transport и не добавлять runtime code.
+Следующая задача — **Gate A: implementation stack decision**:
 
-Результат R1 должен пройти review на противоречия baseline, unknown-outcome semantics, concurrency, compatibility и security boundaries до начала R2.
+> Сравнить минимальные implementation stack candidates для reference core R2 и принять отдельное design decision. Оценить Windows/Linux, типизацию protocol/state contracts, concurrency/state-machine testability, packaging/deployment, dependency footprint и стоимость поддержки локальных workers. Не выбирать storage, concrete transport, provider SDK или daemon topology раньше соответствующих gates.
+
+После принятия Gate A начать R2 с минимального transport-agnostic in-memory core и тестов contract/state invariants.
