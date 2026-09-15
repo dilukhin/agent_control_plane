@@ -4,9 +4,9 @@
 
 ## Текущий статус
 
-Foundation-этап завершён. Проект находится на стадии roadmap/design: последовательность дальнейшей разработки зафиксирована в [`docs/roadmap.md`](docs/roadmap.md).
+Foundation и этап R1 завершены. Приняты базовые control contracts v1: identity/correlation, state model, evidence/verification и security/trust boundaries. Следующий этап — Gate A: обоснованный выбор минимального implementation stack перед R2.
 
-Product implementation, выбранный язык/framework, runtime, protocol implementation, storage, daemon/client/server, transport implementation и model router пока отсутствуют. Их выбор выполняется только в соответствующих decision gates roadmap.
+Product implementation, storage, daemon/client/server, transport implementation и model router пока отсутствуют. Язык/framework/runtime ещё не выбран; выбор выполняется в Gate A roadmap.
 
 ## Ответственность проекта
 
@@ -42,7 +42,14 @@ Control protocol должен быть отделён от transport. HTTPS rela
 
 Последовательность проектирования и реализации: [`docs/roadmap.md`](docs/roadmap.md).
 
-Baseline фиксирует устойчивые инварианты и границы. Roadmap задаёт этапы и decision gates, но не превращает ещё не принятые варианты реализации в архитектурные решения.
+Принятые R1-контракты:
+
+- [`docs/control_protocol.md`](docs/control_protocol.md) — control protocol v1;
+- [`docs/state_model.md`](docs/state_model.md) — canonical state machine;
+- [`docs/evidence_model.md`](docs/evidence_model.md) — evidence и actual-state verification;
+- [`docs/security_model.md`](docs/security_model.md) — trust boundaries и security invariants.
+
+Baseline фиксирует устойчивые инварианты и границы. Roadmap задаёт этапы и decision gates. R1-документы являются владельцами принятых contract-level решений; отложенные в них темы не считаются выбранной реализацией.
 
 ## Разработка
 
