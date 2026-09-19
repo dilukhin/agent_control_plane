@@ -1,7 +1,7 @@
 ---
 document_type: development_environment
 status: active
-updated_at: 2026-09-16
+updated_at: 2026-09-19
 ---
 
 # Development environment
@@ -97,3 +97,21 @@ GitHub CI остаётся предпочтительным постоянным
 Локальный/Web validation дополняет CI, но не должен подменять его, если workflow уже является required project check.
 
 До появления CI нельзя ссылаться на несуществующий workflow как на verification evidence.
+
+## Постоянные проверки Go CI (#9)
+
+Workflow: [.github/workflows/go-ci.yml](../.github/workflows/go-ci.yml).
+
+| Check name | Среда | Проверки |
+| --- | --- | --- |
+| test (ubuntu-24.04) | Linux amd64, CGO_ENABLED=0 | go test -count=1 -timeout=5m ./..., go vet ./..., go build ./... |
+| test (windows-2022) | Windows amd64, CGO_ENABLED=0 | Те же команды выполняются непосредственно на Windows |
+| race and format (linux) | Linux amd64, CGO_ENABLED=1 для race instrumentation | gofmt -l . должен быть пустым; go test -race -count=1 -timeout=5m ./... |
+
+Go закреплён на 1.27.1; GOTOOLCHAIN=local предотвращает неявную подмену toolchain, GOFLAGS=-mod=readonly — изменение module graph во время проверки. Обновление версии Go — отдельное проверяемое изменение. Cache отключён для минимального набора без внешних модулей; добавление зависимости R3 требует повторной проверки.
+
+События: pull_request в main и push в main. На PR checkout выполняется по точному head SHA; это не тест синтетического merge commit. После слияния push-run проверяет фактический main. Actions закреплены commit SHA; credentials не сохраняются, permissions — contents: read. Каждый job ограничен 15 минутами, каждая test-команда — 5 минутами на пакет; новая проверка той же ветки отменяет устаревший запуск.
+
+Перед слиянием изменений Go/CI нужны три успешных check на актуальном head. Это правило проекта; наличие branch-protection/ruleset этим документом не утверждается и не настраивается workflow. Пропущенный/отменённый job не является pass. После слияния проверить push-run main, при неуспехе остановить переход к следующему этапу.
+
+CI не требует секретов, не разворачивает сервисы и не выполняет production mutations. Он не доказывает crash durability SQLite, пока R3 не добавит соответствующие тесты. Linux race instrumentation не вводит cgo dependency в продукт.

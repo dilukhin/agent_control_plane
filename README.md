@@ -62,4 +62,4 @@ Baseline фиксирует устойчивые инварианты и гра�
 
 Содержательные изменения выполняются через отдельную task-ветку и pull request. Не добавлять implementation, dependency, CI или infrastructure «на будущее» без конкретной проверяемой потребности.
 
-В репозитории есть Go unit/regression tests для protocol, state, evidence и core. Исторические результаты R2 приведены выше; они не заменяют проверки нового PR. Введение постоянного CI Windows/Linux отслеживается в [#9](https://github.com/dilukhin/agent_control_plane/issues/9). Успешным CI считается фактический run/jobs для проверяемого commit, а не наличие workflow-файла.
+В репозитории есть Go unit/regression tests для protocol, state, evidence и core. Исторические результаты R2 приведены выше; они не заменяют проверки нового PR. Постоянный [Go CI](.github/workflows/go-ci.yml) запускает tests/vet/pure-Go build непосредственно на Windows/Linux и race/gofmt на Linux; требования описаны в [development_environment.md](docs/development_environment.md). Успешным CI считается фактический run/jobs для проверяемого commit, а не наличие workflow-файла.
