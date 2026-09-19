@@ -76,4 +76,6 @@ R7/R8 остаются этапами roadmap. Их конкретные issues 
 
 **R3.1 реализован:** общий transactional persistence boundary, memory/SQLite, typed schema v1, embedded migrations, CAS, durable dedup/evidence/verifications и reservations. Контрактные, rollback/reopen/crash и schema compatibility tests добавлены. API и ограничения: [persistence.md](persistence.md); локальная validation: [record](validation/r3.1-sqlite.md). Приёмка точного PR head и main подтверждается Actions run/jobs в PR и [#10](https://github.com/dilukhin/agent_control_plane/issues/10).
 
-**Следующая задача — #10 / R3.2:** recovery inventory/classification и reconciliation с сохранением reservations, отказом stale owners и без автоматического mutation retry. Перед началом перечитать актуальный main/PR и issue. R3.3/retention следует отдельным PR. Полный R3 ещё не завершён; R4–R6 не реализованы; design-часть #8 остаётся открытой.
+**R3.2 реализован:** постраничная классификация сохранённой работы, атомарный отзыв полномочий с наблюдением, сохранение reservations, запрет stale executor и безопасное согласование результата. Схема v2; проверены миграция v1, два конкурентных процесса и аварийный выход. Правила: [recovery.md](recovery.md). Приёмка точных PR/main commits фиксируется в #10.
+
+**Следующая задача — #10 / R3.3:** бюджеты хранения, ограниченная очистка и обслуживание SQLite с защитой активной/неопределённой работы и необходимых evidence/dedup. До завершения R3.3 задача #10 остаётся открытой. Затем #11 → #12 → #8 согласно принятому порядку.

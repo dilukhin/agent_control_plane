@@ -51,7 +51,7 @@ Digest v1: проверенный envelope с UTC `issued_at`/`deadline_at` се
 
 ## Версии и миграции
 
-Первая persisted schema — v1. R2 хранил только память, поэтому единственная допустимая предыдущая fixture — пустая БД v0. Импорт произвольной SQLite-БД не выполняется. Embedded SQL migrations выполняются последовательно в transaction вместе с историей и номером версии; при ошибке DDL/data/history/version откатываются. Нет down migrations, удаления или автоматического пересоздания incompatible DB.
+Первая persisted schema — v1; текущая v2 добавляет revocations для R3.2. R2 хранил только память, поэтому единственная допустимая предыдущая fixture — пустая БД v0. Импорт произвольной SQLite-БД не выполняется. Embedded SQL migrations выполняются последовательно в transaction вместе с историей и номером версии; при ошибке DDL/data/history/version откатываются. Нет down migrations, удаления или автоматического пересоздания incompatible DB.
 
 Unsupported newer version, иной application ID, непоследовательная/изменённая история отклоняются. Schema version/history повторно проверяются внутри каждого read/write transaction, поэтому уже открытый старый handle не пишет после upgrade другим process. История migration проверяет совместимость, но не является защитой от злонамеренного изменения БД владельцем файлов. При ошибке открытия файл сохраняется для диагностики.
 
@@ -59,4 +59,4 @@ Unsupported newer version, иной application ID, непоследовател
 
 ## Граница готовности
 
-R3.1 обеспечивает persistence и атомарность. Open/reopen не запускает scheduler, не классифицирует работу и не повторяет execution. Recovery inventory/policy относится к R3.2; bounded retention/GC — к R3.3. До их завершения #10 открыт, долговременная production эксплуатация R3 не заявляется. Тесты и границы доказательств: [validation record](validation/r3.1-sqlite.md).
+R3.1 обеспечивает persistence и атомарность. Open/reopen не запускает scheduler, не классифицирует работу и не повторяет execution. Recovery inventory и отзыв полномочий реализованы в [R3.2](recovery.md); bounded retention/GC — к R3.3. До их завершения #10 открыт, долговременная production эксплуатация R3 не заявляется. Тесты и границы доказательств: [validation record](validation/r3.1-sqlite.md).

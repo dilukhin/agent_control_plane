@@ -168,7 +168,7 @@ func TestSQLiteReopenPreservesGraphAndOwnership(t *testing.T) {
 	if e != nil || !reflect.DeepEqual(got, a) {
 		t.Fatalf("reopen operation: %+v %v", got, e)
 	}
-	if e = s.CheckActiveAttemptContext(ctx, "a", attempt.ID, attempt.LeaseID, 1, "owner"); e != nil {
+	if e = s.CheckActiveAttemptContext(ctx, "a", attempt.ID, attempt.LeaseID, 1, "owner"); !errors.Is(e, ErrStaleOwnership) {
 		t.Fatal(e)
 	}
 	if _, _, e = s.StartAttempt(ctx, "b", b.Revision, "ab", "lb", "owner", "", now); !errors.Is(e, ErrConflictScope) {

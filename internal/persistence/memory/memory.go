@@ -15,6 +15,7 @@ import (
 )
 
 type data struct {
+	revocations   map[protocol.AttemptID]p.Revocation
 	tasks         map[protocol.TaskID]state.Task
 	ops           map[protocol.OperationID]state.Operation
 	attempts      map[protocol.AttemptID]state.Attempt
@@ -32,7 +33,8 @@ type Repository struct {
 
 func New() *Repository {
 	return &Repository{gate: make(chan struct{}, 1), d: data{
-		tasks: map[protocol.TaskID]state.Task{}, ops: map[protocol.OperationID]state.Operation{},
+		revocations: map[protocol.AttemptID]p.Revocation{},
+		tasks:       map[protocol.TaskID]state.Task{}, ops: map[protocol.OperationID]state.Operation{},
 		attempts: map[protocol.AttemptID]state.Attempt{}, evidence: map[protocol.EvidenceID]evidence.Record{},
 		verifications: map[string]evidence.Verification{}, messages: map[protocol.MessageID]p.Message{},
 		reservations: map[string]p.Reservation{},
@@ -78,7 +80,7 @@ func (r *Repository) run(ctx context.Context, write bool, fn func(p.Tx) error) e
 	}
 	// Copy-on-write makes even a late callback error atomic. Values with slices
 	// are cloned on both input and output, so the snapshot has no mutable aliases.
-	d := data{maps.Clone(r.d.tasks), maps.Clone(r.d.ops), maps.Clone(r.d.attempts),
+	d := data{maps.Clone(r.d.revocations), maps.Clone(r.d.tasks), maps.Clone(r.d.ops), maps.Clone(r.d.attempts),
 		maps.Clone(r.d.evidence), maps.Clone(r.d.verifications), maps.Clone(r.d.messages), maps.Clone(r.d.reservations)}
 	t := &transaction{d: &d, write: write}
 	if err := fn(t); err != nil {
@@ -223,4 +225,31 @@ func (t *transaction) Release(id protocol.OperationID) error {
 		}
 	}
 	return nil
+}
+
+func (t *transaction) OperationsAfter(after protocol.OperationID, limit int) ([]state.Operation, error) {
+	if limit < 1 || limit > p.MaxPageSize {
+		return nil, p.ErrIntegrity
+	}
+	ids := make([]protocol.OperationID, 0, len(t.d.ops))
+	for id := range t.d.ops {
+		if id > after {
+			ids = append(ids, id)
+		}
+	}
+	slices.Sort(ids)
+	if len(ids) > limit {
+		ids = ids[:limit]
+	}
+	out := make([]state.Operation, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, cloneOp(t.d.ops[id]))
+	}
+	return out, nil
+}
+func (t *transaction) Revocation(id protocol.AttemptID) (p.Revocation, error) {
+	return get(t.d.revocations, id)
+}
+func (t *transaction) InsertRevocation(v p.Revocation) error {
+	return insert(t, t.d.revocations, v.AttemptID, v)
 }

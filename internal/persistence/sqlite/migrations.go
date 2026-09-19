@@ -22,11 +22,15 @@ type migration struct {
 }
 
 func migrations() []migration {
-	b, err := migrationFiles.ReadFile("migrations/001_initial.sql")
-	if err != nil {
-		panic(err)
+	out := []migration{}
+	for i, name := range []string{"001_initial.sql", "002_recovery.sql"} {
+		b, err := migrationFiles.ReadFile("migrations/" + name)
+		if err != nil {
+			panic(err)
+		}
+		out = append(out, migration{i + 1, string(b)})
 	}
-	return []migration{{1, string(b)}}
+	return out
 }
 func checksum(s string) string { return fmt.Sprintf("%x", sha256.Sum256([]byte(s))) }
 func validateSchema(ctx context.Context, c *sql.Conn) (int, error) {

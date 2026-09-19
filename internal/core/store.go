@@ -314,6 +314,14 @@ func checkActive(r p.Reader, id protocol.OperationID, attemptID protocol.Attempt
 	if err != nil {
 		return err
 	}
+	if _, err := r.Revocation(attemptID); err == nil {
+		return ErrStaleOwnership
+	} else if !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	if a.State != state.AttemptRunning && a.State != state.AttemptReported {
+		return ErrStaleOwnership
+	}
 	if a.LeaseID != leaseID || a.LeaseGeneration != generation || a.OwnerActorID != owner {
 		return ErrStaleOwnership
 	}
