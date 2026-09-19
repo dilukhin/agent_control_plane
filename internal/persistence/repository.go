@@ -37,7 +37,19 @@ type Reservation struct {
 	CreatedAt   time.Time
 }
 
+type Revocation struct {
+	AttemptID   protocol.AttemptID
+	OperationID protocol.OperationID
+	EvidenceID  protocol.EvidenceID
+	Reason      string
+	RevokedAt   time.Time
+}
+
+const MaxPageSize = 100
+
 type Reader interface {
+	OperationsAfter(protocol.OperationID, int) ([]state.Operation, error)
+	Revocation(protocol.AttemptID) (Revocation, error)
 	Task(protocol.TaskID) (state.Task, error)
 	Operation(protocol.OperationID) (state.Operation, error)
 	Attempt(protocol.AttemptID) (state.Attempt, error)
@@ -50,6 +62,7 @@ type Reader interface {
 
 type Tx interface {
 	Reader
+	InsertRevocation(Revocation) error
 	InsertTask(state.Task) error
 	InsertOperation(state.Operation) error
 	UpdateOperation(state.Operation, uint64) error

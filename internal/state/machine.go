@@ -85,3 +85,20 @@ func StartAttempt(op Operation, expectedRevision uint64, attemptID protocol.Atte
 	}
 	return next, attempt, nil
 }
+
+// LoseExecutionCertainty invalidates authority without implying executor
+// quiescence. An already unknown operation still advances its CAS revision.
+func LoseExecutionCertainty(op Operation, expected uint64, now time.Time) (Operation, error) {
+	if op.State != OperationUnknownOutcome {
+		return Transition(op, expected, OperationUnknownOutcome, now)
+	}
+	if op.Revision != expected {
+		return Operation{}, ErrRevisionConflict
+	}
+	if now.IsZero() || op.Revision == 0 || op.Revision >= math.MaxInt64 {
+		return Operation{}, errors.New("invalid time or exhausted revision")
+	}
+	op.Revision++
+	op.UpdatedAt = now
+	return op, nil
+}

@@ -55,7 +55,7 @@ func TestSettingsEveryConnection(t *testing.T) {
 		for _, check := range []struct {
 			name string
 			want any
-		}{{"foreign_keys", int64(1)}, {"synchronous", int64(2)}, {"busy_timeout", int64(5000)}, {"auto_vacuum", int64(2)}, {"journal_mode", "wal"}, {"user_version", int64(1)}} {
+		}{{"foreign_keys", int64(1)}, {"synchronous", int64(2)}, {"busy_timeout", int64(5000)}, {"auto_vacuum", int64(2)}, {"journal_mode", "wal"}, {"user_version", int64(len(migrations()))}} {
 			var got any
 			if e = c.QueryRowContext(ctx, "PRAGMA "+check.name).Scan(&got); e != nil {
 				t.Fatal(e)
@@ -71,7 +71,7 @@ func TestSchemaRejectsFutureTamperedAndUnrelated(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			r, path := openTest(t)
 			db := raw(t, path)
-			query := map[string]string{"future": "PRAGMA user_version=2", "checksum": "UPDATE schema_migrations SET checksum='changed'", "missing_history": "DELETE FROM schema_migrations", "unrelated": "PRAGMA application_id=42"}[mode]
+			query := map[string]string{"future": "PRAGMA user_version=99", "checksum": "UPDATE schema_migrations SET checksum='changed'", "missing_history": "DELETE FROM schema_migrations", "unrelated": "PRAGMA application_id=42"}[mode]
 			if _, e := db.Exec(query); e != nil {
 				t.Fatal(e)
 			}
@@ -111,12 +111,12 @@ func TestMigrationRollbackPreservesVersionAndData(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer c.Close()
-	ms := append(migrations(), migration{2, "CREATE TABLE partial(id INTEGER) STRICT; DELETE FROM tasks; INVALID SQL;"})
+	ms := append(migrations(), migration{len(migrations()) + 1, "CREATE TABLE partial(id INTEGER) STRICT; DELETE FROM tasks; INVALID SQL;"})
 	if e = migrate(ctx, c, ms); e == nil {
 		t.Fatal("bad migration succeeded")
 	}
 	version, e := validateSchema(ctx, c)
-	if e != nil || version != 1 {
+	if e != nil || version != len(migrations()) {
 		t.Fatalf("version=%d %v", version, e)
 	}
 	var count int
@@ -243,6 +243,33 @@ func TestAbruptProcessExit(t *testing.T) {
 		}
 		return nil
 	}); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestUpgradePreviousSchemaPreservesData(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v1.db")
+	db := raw(t, path)
+	ctx := context.Background()
+	c, e := db.Conn(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = migrate(ctx, c, migrations()[:1]); e != nil {
+		t.Fatal(e)
+	}
+	tx := &transaction{conn: c, ctx: ctx, write: true}
+	if e = tx.InsertTask(task("from-v1")); e != nil {
+		t.Fatal(e)
+	}
+	c.Close()
+	db.Close()
+	r, e := Open(ctx, path, Options{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer r.Close()
+	if e = r.View(ctx, func(reader p.Reader) error { _, e := reader.Task("from-v1"); return e }); e != nil {
 		t.Fatal(e)
 	}
 }
