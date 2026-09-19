@@ -4,11 +4,11 @@
 
 ## Текущий статус
 
-Foundation, R1 и Gate A завершены. Минимальный reference core R2 реализован на pure Go: типизированные protocol/state/evidence contracts, in-memory state store, revision/CAS, attempt/lease ownership, conflict scopes, duplicate-message handling и unknown-outcome/reconciliation semantics.
+Foundation, R1 и Gate A завершены. Минимальный reference core R2 реализован на pure Go: типизированные protocol/state/evidence contracts, in-memory reference store, revision/CAS, attempt/lease ownership, conflict scopes, duplicate-message handling и unknown-outcome/reconciliation semantics.
 
 R2 проверен на точном target toolchain Go 1.27.1: `go test ./...`, `go vet ./...`, `go test -race ./...`, pure-Go cross-build для Windows/Linux и `gofmt` прошли. Validation record: [`docs/validation/r2-go-1.27.1.md`](docs/validation/r2-go-1.27.1.md).
 
-Gate B завершён: для R3 выбран SQLite через pure-Go `modernc.org/sqlite`; canonical storage проектируется как локальная transactional DB с WAL, FULL durability, revision CAS, persisted conflict reservations, migrations и bounded retention. Daemon/client/server topology, transport implementation и model router пока не выбраны.
+Gate B завершён: для R3 выбран SQLite через pure-Go `modernc.org/sqlite`; R3.1 реализует локальную transactional DB с WAL/FULL, revision CAS, persisted conflict reservations и schema migrations. Общий core работает через persistence boundary с memory/SQLite; internal API и правила хранения описаны в [`docs/persistence.md`](docs/persistence.md). Recovery (R3.2) и bounded retention (R3.3) ещё предстоят; #10 остаётся открытой. Daemon/client/server topology, transport implementation и model router пока не выбраны.
 
 ## Ответственность проекта
 

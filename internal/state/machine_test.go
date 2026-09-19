@@ -62,3 +62,15 @@ func TestStartAttemptIncrementsLeaseGeneration(t *testing.T) {
 		t.Fatalf("unexpected operation state: %+v", next)
 	}
 }
+
+func TestCountersCannotOverflowPersistedRange(t *testing.T) {
+	now := time.Now()
+	op := Operation{State: OperationPlanned, Revision: 1<<63 - 1}
+	if _, err := Transition(op, op.Revision, OperationReady, now); err == nil {
+		t.Fatal("revision overflow accepted")
+	}
+	op = Operation{State: OperationReady, Revision: 1, LeaseGeneration: 1<<63 - 1}
+	if _, _, err := StartAttempt(op, 1, "attempt", now); err == nil {
+		t.Fatal("generation overflow accepted")
+	}
+}
