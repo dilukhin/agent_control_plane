@@ -66,6 +66,12 @@ R7/R8 остаются этапами roadmap. Их конкретные issues 
 - Новая архитектурная развилка, конфликт ownership или неожиданное фактическое состояние останавливают mutation chain; сначала диагностика и явное решение.
 - Не понижать Go baseline ради среды и не считать ephemeral toolchain сохранённым между диалогами.
 
-## Сопутствующие документы
+## Выполнено 2026-09-19 и точка продолжения
 
-В github-connector-knowledge профиль проекта ещё содержит историческое ограничение «только foundation, tests/CI отсутствуют». После появления CI актуализировать исходный профиль и сформировать runtime bundle штатным генератором через отдельный PR; generated dist не редактировать вручную. Это долг актуализации профиля, а не новый инцидент GitHub Connector.
+- План и актуализация исходных документов: [PR #13](https://github.com/dilukhin/agent_control_plane/pull/13) слит.
+- Минимальный CI: [PR #14](https://github.com/dilukhin/agent_control_plane/pull/14) слит, #9 закрыта. Проверен main@dd797372e761d120c20308fcc0ee4c227e2c9ea3.
+- [PR run](https://github.com/dilukhin/agent_control_plane/actions/runs/35438800034) и [push-run main](https://github.com/dilukhin/agent_control_plane/actions/runs/35438888072): все три jobs и обязательные steps успешны на Go 1.27.1. Windows/Linux tests выполнялись непосредственно на соответствующих ОС.
+- Профиль проекта актуализирован и runtime bundle сформирован штатным генератором: [github-connector-knowledge PR #32](https://github.com/dilukhin/github-connector-knowledge/pull/32) слит после Validate knowledge; bundle перечитан из main. Устаревшее описание «только foundation» удалено.
+- В этой Web-среде локального Go нет; локальное выполнение Go-тестов не заявляется. Фактические результаты выше получены в GitHub Actions.
+
+**Следующая задача — #10 / R3.1:** выделить persistence boundary, реализовать схему/миграции SQLite и атомарные операции по ADR-0002 с общими контрактными проверками in-memory/SQLite. До начала заново проверить main и связанные PR. R3.2/recovery и R3.3/retention следуют отдельными PR. R3–R6 ещё не реализованы; design-часть #8 остаётся открытой.
