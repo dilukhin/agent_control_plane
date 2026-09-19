@@ -1,8 +1,8 @@
 ---
 document_type: project_roadmap
-version: 1.0
+version: 1.1
 status: active
-updated_at: 2026-09-15
+updated_at: 2026-09-19
 ---
 
 # agent_control_plane: roadmap
@@ -17,16 +17,17 @@ Roadmap не заменяет `docs/project_baseline.md`. Baseline остаёт�
 
 ## 2. Текущее состояние
 
-На старте roadmap:
+По инвентаризации main@ba800e8a1b1e25379f908ddce5b653017925a45d от 2026-09-19:
 
-- repository содержит только foundation-документы;
-- product implementation отсутствует;
-- tests и CI jobs отсутствуют;
-- язык/framework/package manager не выбраны;
-- concrete storage, daemon/client/server topology, transports, provider adapters и model router не выбраны;
-- `docs/project_baseline.md` является каноническим pre-roadmap baseline.
+- foundation, R1, Gate A, R2 и Gate B завершены;
+- Go reference core и unit/regression tests существуют; store пока in-memory;
+- exact validation R2 на Go 1.27.1 зафиксирована в docs/validation/r2-go-1.27.1.md;
+- SQLite выбран ADR-0002, но persistence/recovery/retention ещё не реализованы;
+- topology, первый transport и конкретные providers не выбраны;
+- минимальный CI вводится перед R3 для существующих тестов (#9);
+- ближайшая реализация продукта — R3 (#10), затем R4 (#11), R5 (#12), R6 (#8).
 
-Первый следующий результат — design package для control protocol и state model. Реализация до него считается преждевременной.
+Текущий порядок и критерии завершения: [work_plan_ru.md](work_plan_ru.md). Начальное состояние «только foundation» является историей проекта, а не текущим статусом.
 
 ## 3. Сквозные критерии
 
@@ -134,7 +135,7 @@ R2 не обязан иметь daemon, remote transport, provider SDK или du
 
 ### Результаты
 
-- выбрать storage только после требований R1/R2;
+- реализовать выбранное в Gate B storage по ADR-0002;
 - persisted state version;
 - migration policy и fixtures;
 - restart/recovery path;
@@ -258,7 +259,7 @@ Transport-specific metadata не должно становиться канон�
 - operator/developer documentation;
 - минимальный release process.
 
-CI, packaging и deployment topology не создаются заранее ради самого наличия инфраструктуры.
+Минимальный CI для существующих тестов R2 вводится перед R3 по принятому плану 2026-09-19 (#9). Это проверяемая потребность перед persistence, а не перенос packaging/deployment в ранний этап. R8 расширяет эксплуатационную готовность; CI, packaging и deployment topology не создаются ради самого наличия инфраструктуры.
 
 ## 12. Граница первого MVP
 
@@ -303,6 +304,8 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 R1, Gate A, R2 и Gate B завершены. Exact-toolchain validation R2 на Go 1.27.1 также выполнена.
 
-Следующая задача — **R3: durable state, recovery и retention**:
+Сначала подтвердить минимальный CI Windows/Linux (#9). Следующая задача продукта — **R3: durable state, recovery и retention** (#10), в трёх последовательных PR: транзакционное хранилище, recovery, retention/GC. Затем #11 → #12 → runtime-часть #8. Подробности: [work_plan_ru.md](work_plan_ru.md).
+
+Граница R3:
 
 > Реализовать SQLite persistence boundary по ADR-0002: schema/migrations, atomic revision CAS, durable tasks/operations/attempts/messages/evidence/verifications, persisted mutation-scope reservations, restart recovery и bounded retention/GC. In-memory Store R2 не заменять transport-specific или SQL-specific логикой: persistence должен реализовать уже принятые core contracts. Не добавлять daemon topology, concrete transport или provider SDK.

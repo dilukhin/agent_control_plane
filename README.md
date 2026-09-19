@@ -44,6 +44,8 @@ Control protocol должен быть отделён от transport. HTTPS rela
 
 Последовательность проектирования и реализации: [`docs/roadmap.md`](docs/roadmap.md).
 
+Принятый порядок текущих работ и задачи: [`docs/work_plan_ru.md`](docs/work_plan_ru.md).
+
 Принятые R1-контракты:
 
 - [`docs/control_protocol.md`](docs/control_protocol.md) — control protocol v1;
@@ -60,4 +62,4 @@ Baseline фиксирует устойчивые инварианты и гра�
 
 Содержательные изменения выполняются через отдельную task-ветку и pull request. Не добавлять implementation, dependency, CI или infrastructure «на будущее» без конкретной проверяемой потребности.
 
-Пока в репозитории нет тестов и CI jobs, поэтому никакие такие проверки не считаются существующими.
+В репозитории есть Go unit/regression tests для protocol, state, evidence и core. Исторические результаты R2 приведены выше; они не заменяют проверки нового PR. Введение постоянного CI Windows/Linux отслеживается в [#9](https://github.com/dilukhin/agent_control_plane/issues/9). Успешным CI считается фактический run/jobs для проверяемого commit, а не наличие workflow-файла.
