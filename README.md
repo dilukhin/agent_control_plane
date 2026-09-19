@@ -8,7 +8,7 @@ Foundation, R1 и Gate A завершены. Минимальный reference co
 
 R2 проверен на точном target toolchain Go 1.27.1: `go test ./...`, `go vet ./...`, `go test -race ./...`, pure-Go cross-build для Windows/Linux и `gofmt` прошли. Validation record: [`docs/validation/r2-go-1.27.1.md`](docs/validation/r2-go-1.27.1.md).
 
-Gate B завершён: для R3 выбран SQLite через pure-Go `modernc.org/sqlite`; R3.1 реализует локальную transactional DB с WAL/FULL, revision CAS, persisted conflict reservations и schema migrations. Общий core работает через persistence boundary с memory/SQLite; internal API и правила хранения описаны в [`docs/persistence.md`](docs/persistence.md). R3.2 добавляет [восстановление](docs/recovery.md), отзыв полномочий потерянных попыток и проверку состояния без автоматического повтора. Ограниченное хранение R3.3 ещё предстоит; #10 остаётся открытой. Daemon/client/server topology, transport implementation и model router пока не выбраны.
+Gate B завершён: для R3 выбран SQLite через pure-Go `modernc.org/sqlite`; R3.1 реализует локальную transactional DB с WAL/FULL, revision CAS, persisted conflict reservations и schema migrations. Общий core работает через persistence boundary с memory/SQLite; internal API и правила хранения описаны в [`docs/persistence.md`](docs/persistence.md). R3.2 добавляет [восстановление](docs/recovery.md), отзыв полномочий потерянных попыток и проверку состояния без автоматического повтора. R3.3 реализует [ограниченное хранение и очистку](docs/retention.md), завершение задач и защиту от старых повторных сообщений после удаления dedup. Все части R3 реализованы; следующий этап — R4 (#11). Daemon/client/server topology, transport implementation и model router пока не выбраны.
 
 ## Ответственность проекта
 

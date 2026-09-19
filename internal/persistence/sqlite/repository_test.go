@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/dilukhin/agent_control_plane/internal/evidence"
 	p "github.com/dilukhin/agent_control_plane/internal/persistence"
 	"github.com/dilukhin/agent_control_plane/internal/protocol"
 	"github.com/dilukhin/agent_control_plane/internal/state"
@@ -270,6 +273,121 @@ func TestUpgradePreviousSchemaPreservesData(t *testing.T) {
 	}
 	defer r.Close()
 	if e = r.View(ctx, func(reader p.Reader) error { _, e := reader.Task("from-v1"); return e }); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestIncrementalMaintenanceIsBounded(t *testing.T) {
+	r, _ := openTest(t)
+	ctx := context.Background()
+	// Allocate and free pages through real records, outside the execution path.
+	if e := r.Update(ctx, func(tx p.Tx) error {
+		for i := 0; i < 100; i++ {
+			if e := tx.InsertTask(task(fmt.Sprintf("%04d-%s", i, strings.Repeat("x", 2048)))); e != nil {
+				return e
+			}
+		}
+		return nil
+	}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := r.db.Exec("DELETE FROM tasks"); e != nil {
+		t.Fatal(e)
+	}
+	var before, after int
+	if e := r.db.QueryRow("PRAGMA freelist_count").Scan(&before); e != nil {
+		t.Fatal(e)
+	}
+	if before < 2 {
+		t.Fatalf("fixture did not free pages: %d", before)
+	}
+	if e := r.Maintain(ctx, 1); e != nil {
+		t.Fatal(e)
+	}
+	if e := r.db.QueryRow("PRAGMA freelist_count").Scan(&after); e != nil {
+		t.Fatal(e)
+	}
+	if before-after != 1 {
+		t.Fatalf("vacuum exceeded or ignored budget: %d -> %d", before, after)
+	}
+	if e := r.Maintain(ctx, 1025); e == nil {
+		t.Fatal("unbounded vacuum accepted")
+	}
+}
+func TestUpgradeV2RetainsRecoveryAndConservativeReplay(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v2.db")
+	db := raw(t, path)
+	ctx := context.Background()
+	c, e := db.Conn(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = migrate(ctx, c, migrations()[:2]); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = c.ExecContext(ctx, "INSERT INTO messages VALUES('old','task','','','v1:'||?,?)", strings.Repeat("0", 64), timestamp(time.Now().Add(-90*24*time.Hour))); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = c.ExecContext(ctx, "INSERT INTO tasks VALUES('task','planned',1,?,?)", timestamp(time.Now()), timestamp(time.Now())); e != nil {
+		t.Fatal(e)
+	}
+	tx := &transaction{conn: c, ctx: ctx, write: true}
+	now := time.Now().UTC()
+	op := state.Operation{Descriptor: protocol.OperationDescriptor{ID: "op", TaskID: "task", Name: "operation", TargetRef: "target", EffectClass: protocol.EffectMutation, ConflictScope: []string{"target"}, IdempotencyMode: protocol.IdempotencyUnknown, VerificationPolicyRef: "v", AuthorizationPolicyRef: "a"}, State: state.OperationPlanned, Revision: 1, CreatedAt: now, UpdatedAt: now}
+	if e = tx.InsertOperation(op); e != nil {
+		t.Fatal(e)
+	}
+	if e = tx.InsertAttempt(state.Attempt{ID: "attempt", OperationID: "op", LeaseID: "lease", LeaseGeneration: 1, OwnerActorID: "owner", State: state.AttemptUncertain, CreatedAt: now, UpdatedAt: now}); e != nil {
+		t.Fatal(e)
+	}
+	op.State = state.OperationUnknownOutcome
+	op.Revision = 2
+	op.ActiveAttemptID = "attempt"
+	op.LeaseGeneration = 1
+	if e = tx.UpdateOperation(op, 1); e != nil {
+		t.Fatal(e)
+	}
+	if e = tx.Reserve(p.Reservation{Scope: "target", OperationID: "op", AttemptID: "attempt", LeaseID: "lease", Generation: 1, CreatedAt: now}); e != nil {
+		t.Fatal(e)
+	}
+	if e = tx.InsertEvidence(evidence.Record{ID: "lost", TaskID: "task", OperationID: "op", AttemptID: "attempt", Kind: evidence.KindProcessObservation, SourceActorID: "controller", ObservedAt: now, SubjectRef: "worker"}); e != nil {
+		t.Fatal(e)
+	}
+	if e = tx.InsertRevocation(p.Revocation{AttemptID: "attempt", OperationID: "op", EvidenceID: "lost", Reason: "controller_restart", RevokedAt: now}); e != nil {
+		t.Fatal(e)
+	}
+	c.Close()
+	db.Close()
+	start := time.Now().Unix()
+	r, e := Open(ctx, path, Options{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer r.Close()
+	if e = r.View(ctx, func(reader p.Reader) error {
+		m, e := reader.Message("old")
+		if e != nil {
+			return e
+		}
+		if m.ExpiresAt < start+int64(p.ReplayWindow/time.Second) {
+			return errors.New("legacy message lost migration grace")
+		}
+		if _, e = reader.Task("task"); e != nil {
+			return e
+		}
+		op, e := reader.Operation("op")
+		if e != nil {
+			return e
+		}
+		if op.State != state.OperationUnknownOutcome {
+			return errors.New("unknown outcome lost on upgrade")
+		}
+		if _, e = reader.Revocation("attempt"); e != nil {
+			return e
+		}
+		_, e = reader.Reservation("target")
+		return e
+	}); e != nil {
 		t.Fatal(e)
 	}
 }

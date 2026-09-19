@@ -12,11 +12,13 @@ import (
 )
 
 var (
-	ErrNotFound      = errors.New("record not found")
-	ErrDuplicateID   = errors.New("duplicate identity")
-	ErrConflictScope = errors.New("mutation conflict scope is reserved")
-	ErrClosed        = errors.New("repository closed")
-	ErrIntegrity     = errors.New("persistence integrity error")
+	ErrNotFound       = errors.New("record not found")
+	ErrDuplicateID    = errors.New("duplicate identity")
+	ErrConflictScope  = errors.New("mutation conflict scope is reserved")
+	ErrClosed         = errors.New("repository closed")
+	ErrExpiredMessage = errors.New("message outside accepted replay window")
+	ErrTaskTerminal   = errors.New("task is terminal")
+	ErrIntegrity      = errors.New("persistence integrity error")
 )
 
 type Message struct {
@@ -26,6 +28,7 @@ type Message struct {
 	AttemptID   protocol.AttemptID
 	Digest      string
 	IssuedAt    time.Time
+	ExpiresAt   int64
 }
 
 type Reservation struct {
@@ -47,7 +50,16 @@ type Revocation struct {
 
 const MaxPageSize = 100
 
+type TaskSummary struct{ Operations, Pending, Failed, Cancelled int }
 type Reader interface {
+	MessageFloor() (int64, error)
+	TaskSummary(protocol.TaskID) (TaskSummary, error)
+	TerminalTasksAfter(protocol.TaskID, int64, int) ([]state.Task, error)
+	TaskOperations(protocol.TaskID, int) ([]protocol.OperationID, error)
+	OperationRows(protocol.OperationID, int) (int, error)
+	ExpiredMessages(protocol.TaskID, bool, int64, int64, int) ([]protocol.MessageID, error)
+	TaskHasMessages(protocol.TaskID) (bool, error)
+	TaskMessagesSafe(protocol.TaskID, int64, int64) (bool, error)
 	OperationsAfter(protocol.OperationID, int) ([]state.Operation, error)
 	Revocation(protocol.AttemptID) (Revocation, error)
 	Task(protocol.TaskID) (state.Task, error)
@@ -62,6 +74,11 @@ type Reader interface {
 
 type Tx interface {
 	Reader
+	SetMessageFloor(int64) error
+	UpdateTask(state.Task, uint64) error
+	DeleteOperationGraph(protocol.OperationID) error
+	DeleteMessages([]protocol.MessageID) error
+	DeleteTask(protocol.TaskID) error
 	InsertRevocation(Revocation) error
 	InsertTask(state.Task) error
 	InsertOperation(state.Operation) error

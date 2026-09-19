@@ -17,15 +17,15 @@ Roadmap не заменяет `docs/project_baseline.md`. Baseline остаёт�
 
 ## 2. Текущее состояние
 
-Состояние с реализацией R3.2 от 2026-09-19 (результаты приёмки точных commits — в PR и #10):
+Состояние с реализацией R3.3 от 2026-09-19 (результаты приёмки точных commits — в PR и #10):
 
 - foundation, R1, Gate A, R2 и Gate B завершены;
 - Go reference core использует общий persistence boundary с memory и SQLite; есть общий контрактный набор тестов;
 - exact validation R2 на Go 1.27.1 зафиксирована в docs/validation/r2-go-1.27.1.md;
-- SQLite persistence/schema migrations/atomic operations реализованы в R3.1 по ADR-0002; R3.2 реализует восстановление и отзыв полномочий; retention ещё не завершён;
+- SQLite persistence/schema migrations/atomic operations реализованы в R3.1 по ADR-0002; R3.2 реализует восстановление и отзыв полномочий; R3.3 — ограниченное хранение, очистку и обслуживание SQLite;
 - topology, первый transport и конкретные providers не выбраны;
 - минимальный CI добавлен PR #14, #9 закрыта: native tests/vet/build Windows/Linux и Linux race/gofmt; успешные runs перечислены в work_plan_ru.md;
-- ближайшая реализация продукта — R3 (#10), затем R4 (#11), R5 (#12), R6 (#8).
+- R3 (#10) реализован; ближайшая реализация продукта — R4 (#11), затем R5 (#12), R6 (#8).
 
 Текущий порядок и критерии завершения: [work_plan_ru.md](work_plan_ru.md). Начальное состояние «только foundation» является историей проекта, а не текущим статусом.
 
@@ -128,6 +128,8 @@ Design должен явно покрыть:
 R2 не обязан иметь daemon, remote transport, provider SDK или durable database.
 
 ## 6. Этап R3 — Durable state, recovery и retention
+
+**Статус: реализованы R3.1–R3.3.** Persistence, восстановление и очистка описаны в документах-владельцах; ссылки на принятые PR и CI — в #10.
 
 ### Цель
 
@@ -304,8 +306,8 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 R1, Gate A, R2 и Gate B завершены. Exact-toolchain validation R2 на Go 1.27.1 также выполнена.
 
-Минимальный CI Windows/Linux (#9) подтверждён и задача закрыта. Транзакционное хранилище R3.1 реализовано. Следующая задача продукта — **R3.3: retention/GC** (#10); R3.2 recovery реализован отдельным изменением. Затем #11 → #12 → runtime-часть #8. Подробности: [work_plan_ru.md](work_plan_ru.md).
+Минимальный CI Windows/Linux (#9) подтверждён и задача закрыта. Транзакционное хранилище R3.1 реализовано. R3.2 recovery и R3.3 retention/GC также реализованы отдельными изменениями. Следующая задача продукта — **R4: worker/provider contracts** (#11). Затем #12 → runtime-часть #8. Подробности: [work_plan_ru.md](work_plan_ru.md).
 
-Граница R3:
+Объём завершённого R3:
 
-> Реализовать SQLite persistence boundary по ADR-0002: schema/migrations, atomic revision CAS, durable tasks/operations/attempts/messages/evidence/verifications, persisted mutation-scope reservations, restart recovery и bounded retention/GC. In-memory Store R2 не заменять transport-specific или SQL-specific логикой: persistence должен реализовать уже принятые core contracts. Не добавлять daemon topology, concrete transport или provider SDK.
+> Реализован SQLite persistence boundary по ADR-0002: schema/migrations, atomic revision CAS, durable tasks/operations/attempts/messages/evidence/verifications, persisted mutation-scope reservations, restart recovery и bounded retention/GC. In-memory Store R2 не заменять transport-specific или SQL-specific логикой: persistence должен реализовать уже принятые core contracts. Не добавлять daemon topology, concrete transport или provider SDK.

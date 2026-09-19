@@ -264,6 +264,8 @@ func testConfirmedNotStartedReleasesConflictReservation(t *testing.T, s *Store) 
 	}
 }
 
+var messageTestTime = time.Now().UTC()
+
 func testEnvelope(messageID protocol.MessageID) protocol.Envelope {
 	return protocol.Envelope{
 		ProtocolVersion: protocol.ProtocolVersion,
@@ -275,7 +277,7 @@ func testEnvelope(messageID protocol.MessageID) protocol.Envelope {
 		AttemptID:       "att_1",
 		CorrelationID:   "corr_1",
 		Actor:           protocol.Actor{ID: "controller_1", Role: "controller"},
-		IssuedAt:        time.Unix(100, 0),
+		IssuedAt:        messageTestTime,
 		Payload:         map[string]any{"intent": "bounded"},
 	}
 }

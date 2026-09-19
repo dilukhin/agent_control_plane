@@ -184,11 +184,11 @@ func (t *transaction) InsertVerification(v evidence.Verification) error {
 	return nil
 }
 
-const messageColumns = "id,task_id,operation_id,attempt_id,digest,issued_at"
+const messageColumns = "id,task_id,operation_id,attempt_id,digest,issued_at,expires_at"
 
 func scanMessage(row scanner) (v p.Message, err error) {
 	var issuedAt string
-	err = dbError(row.Scan(&v.ID, &v.TaskID, &v.OperationID, &v.AttemptID, &v.Digest, &issuedAt))
+	err = dbError(row.Scan(&v.ID, &v.TaskID, &v.OperationID, &v.AttemptID, &v.Digest, &issuedAt, &v.ExpiresAt))
 	if err != nil {
 		return v, err
 	}
@@ -199,14 +199,14 @@ func scanMessage(row scanner) (v p.Message, err error) {
 	return v, nil
 }
 func (t *transaction) Message(id protocol.MessageID) (p.Message, error) {
-	v, err := scanMessage(t.conn.QueryRowContext(t.ctx, "SELECT id,task_id,operation_id,attempt_id,digest,issued_at FROM messages WHERE id=?", id))
+	v, err := scanMessage(t.conn.QueryRowContext(t.ctx, "SELECT id,task_id,operation_id,attempt_id,digest,issued_at,expires_at FROM messages WHERE id=?", id))
 	if err != nil {
 		return v, err
 	}
 	return v, err
 }
 func (t *transaction) InsertMessage(v p.Message) error {
-	_, err := t.exec("INSERT INTO messages ("+messageColumns+") VALUES(?,?,?,?,?,?)", v.ID, v.TaskID, v.OperationID, v.AttemptID, v.Digest, timestamp(v.IssuedAt))
+	_, err := t.exec("INSERT INTO messages ("+messageColumns+") VALUES(?,?,?,?,?,?,?)", v.ID, v.TaskID, v.OperationID, v.AttemptID, v.Digest, timestamp(v.IssuedAt), v.ExpiresAt)
 	if err != nil {
 		return err
 	}
