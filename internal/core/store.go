@@ -1,434 +1,320 @@
+// Package core owns orchestration decisions independently of storage.
 package core
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
-	"sync"
+	"slices"
 	"time"
 
 	"github.com/dilukhin/agent_control_plane/internal/evidence"
+	p "github.com/dilukhin/agent_control_plane/internal/persistence"
+	"github.com/dilukhin/agent_control_plane/internal/persistence/memory"
 	"github.com/dilukhin/agent_control_plane/internal/protocol"
 	"github.com/dilukhin/agent_control_plane/internal/state"
 )
 
 var (
-	ErrDuplicateID        = errors.New("duplicate identity")
-	ErrNotFound           = errors.New("record not found")
-	ErrConflictScope      = errors.New("mutation conflict scope is reserved")
+	ErrDuplicateID        = p.ErrDuplicateID
+	ErrNotFound           = p.ErrNotFound
+	ErrConflictScope      = p.ErrConflictScope
 	ErrEvidenceScope      = errors.New("evidence does not match operation")
 	ErrMessageIDCollision = errors.New("message id collision")
 	ErrStaleOwnership     = errors.New("stale or invalid execution ownership")
 )
 
-type Store struct {
-	mu                sync.RWMutex
-	tasks             map[protocol.TaskID]state.Task
-	operations        map[protocol.OperationID]state.Operation
-	attempts          map[protocol.AttemptID]state.Attempt
-	leases            map[protocol.LeaseID]struct{}
-	evidence          map[protocol.EvidenceID]evidence.Record
-	operationEvidence map[protocol.OperationID][]protocol.EvidenceID
-	messages          map[protocol.MessageID]protocol.Envelope
+type Store struct{ repository p.Repository }
+
+func NewStore() *Store                        { return NewWithRepository(memory.New()) }
+func NewWithRepository(r p.Repository) *Store { return &Store{repository: r} }
+func (s *Store) Close() error                 { return s.repository.Close() }
+
+// Transaction exposes the same decisions for an atomic message/state update.
+// It is valid only during the callback; do not perform external effects here.
+type Transaction struct {
+	tx     p.Tx
+	failed error
 }
 
-func NewStore() *Store {
-	return &Store{
-		tasks:             make(map[protocol.TaskID]state.Task),
-		operations:        make(map[protocol.OperationID]state.Operation),
-		attempts:          make(map[protocol.AttemptID]state.Attempt),
-		leases:            make(map[protocol.LeaseID]struct{}),
-		evidence:          make(map[protocol.EvidenceID]evidence.Record),
-		operationEvidence: make(map[protocol.OperationID][]protocol.EvidenceID),
-		messages:          make(map[protocol.MessageID]protocol.Envelope),
+func writeValue[T any](s *Store, ctx context.Context, fn func(*Transaction) (T, error)) (T, error) {
+	var out T
+	err := s.repository.Update(ctx, func(tx p.Tx) error {
+		t := &Transaction{tx: tx}
+		var e error
+		out, e = fn(t)
+		if e == nil {
+			e = t.failed
+		}
+		return e
+	})
+	if err != nil {
+		var zero T
+		return zero, err
 	}
+	return out, nil
 }
-
-func cloneDescriptor(d protocol.OperationDescriptor) protocol.OperationDescriptor {
-	out := d
-	if d.ConflictScope != nil {
-		out.ConflictScope = append([]string(nil), d.ConflictScope...)
+func readValue[T any](s *Store, ctx context.Context, fn func(p.Reader) (T, error)) (T, error) {
+	var out T
+	err := s.repository.View(ctx, func(r p.Reader) error { var e error; out, e = fn(r); return e })
+	if err != nil {
+		var zero T
+		return zero, err
 	}
-	return out
+	return out, nil
 }
 
-func cloneOperation(op state.Operation) state.Operation {
-	op.Descriptor = cloneDescriptor(op.Descriptor)
-	return op
+// ProcessMessage commits deduplication and the callback together. Duplicate
+// delivery skips the callback. Neither callback nor commit errors are retried.
+func (s *Store) ProcessMessage(ctx context.Context, env protocol.Envelope, fn func(*Transaction) error) (bool, error) {
+	return writeValue(s, ctx, func(t *Transaction) (bool, error) {
+		duplicate, err := t.RegisterMessage(env)
+		if err != nil || duplicate {
+			return duplicate, err
+		}
+		if fn != nil {
+			if err = fn(t); err != nil {
+				return false, err
+			}
+		}
+		return false, nil
+	})
 }
-
-func (s *Store) RegisterMessage(env protocol.Envelope) (bool, error) {
+func (t *Transaction) registerMessage(env protocol.Envelope) (bool, error) {
 	if err := env.Validate(); err != nil {
 		return false, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if existing, ok := s.messages[env.MessageID]; ok {
-		if reflect.DeepEqual(existing, env) {
+	env.IssuedAt = env.IssuedAt.UTC()
+	if env.DeadlineAt != nil {
+		utc := env.DeadlineAt.UTC()
+		env.DeadlineAt = &utc
+	}
+	encoded, err := json.Marshal(env)
+	if err != nil {
+		return false, err
+	}
+	digest := fmt.Sprintf("v1:%x", sha256.Sum256(encoded))
+	existing, err := t.tx.Message(env.MessageID)
+	if err == nil {
+		if existing.Digest == digest {
 			return true, nil
 		}
-		return false, fmt.Errorf("%w: %s", ErrMessageIDCollision, env.MessageID)
+		return false, ErrMessageIDCollision
 	}
-	s.messages[env.MessageID] = cloneEnvelope(env)
-	return false, nil
+	if !errors.Is(err, ErrNotFound) {
+		return false, err
+	}
+	return false, t.tx.InsertMessage(p.Message{ID: env.MessageID, TaskID: env.TaskID, OperationID: env.OperationID, AttemptID: env.AttemptID, Digest: digest, IssuedAt: env.IssuedAt})
 }
-
-func cloneEnvelope(env protocol.Envelope) protocol.Envelope {
-	out := env
-	out.Payload = cloneMap(env.Payload)
-	out.Extensions = cloneMap(env.Extensions)
-	if env.Lease != nil {
-		lease := *env.Lease
-		out.Lease = &lease
-	}
-	return out
-}
-
-func cloneMap(in map[string]any) map[string]any {
-	if in == nil {
-		return nil
-	}
-	out := make(map[string]any, len(in))
-	for key, value := range in {
-		out[key] = cloneValue(value)
-	}
-	return out
-}
-
-func cloneValue(v any) any {
-	switch x := v.(type) {
-	case map[string]any:
-		return cloneMap(x)
-	case []any:
-		out := make([]any, len(x))
-		for i := range x {
-			out[i] = cloneValue(x[i])
-		}
-		return out
-	default:
-		return v
-	}
-}
-
-func (s *Store) CreateTask(id protocol.TaskID, now time.Time) (state.Task, error) {
+func (t *Transaction) createTask(id protocol.TaskID, now time.Time) (state.Task, error) {
 	if id == "" || now.IsZero() {
 		return state.Task{}, errors.New("task id and time are required")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.tasks[id]; ok {
-		return state.Task{}, fmt.Errorf("%w: task %s", ErrDuplicateID, id)
-	}
-	task := state.Task{ID: id, State: state.TaskPlanned, Revision: 1, CreatedAt: now, UpdatedAt: now}
-	s.tasks[id] = task
-	return task, nil
+	v := state.Task{ID: id, State: state.TaskPlanned, Revision: 1, CreatedAt: now.UTC(), UpdatedAt: now.UTC()}
+	return v, t.tx.InsertTask(v)
 }
-
-func (s *Store) GetTask(id protocol.TaskID) (state.Task, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	task, ok := s.tasks[id]
-	return task, ok
-}
-
-func (s *Store) CreateOperation(d protocol.OperationDescriptor, now time.Time) (state.Operation, error) {
-	d = cloneDescriptor(d)
+func (t *Transaction) createOperation(d protocol.OperationDescriptor, now time.Time) (state.Operation, error) {
+	d.ConflictScope = slices.Clone(d.ConflictScope)
 	if err := d.Validate(); err != nil {
 		return state.Operation{}, err
 	}
 	if now.IsZero() {
 		return state.Operation{}, errors.New("creation time is required")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.tasks[d.TaskID]; !ok {
-		return state.Operation{}, fmt.Errorf("%w: task %s", ErrNotFound, d.TaskID)
+	if _, err := t.tx.Task(d.TaskID); err != nil {
+		return state.Operation{}, err
 	}
-	if _, ok := s.operations[d.ID]; ok {
-		return state.Operation{}, fmt.Errorf("%w: operation %s", ErrDuplicateID, d.ID)
-	}
-	op := state.Operation{
-		Descriptor: d,
-		State:      state.OperationPlanned,
-		Revision:   1,
-		CreatedAt:  now,
-		UpdatedAt:  now,
-	}
-	s.operations[d.ID] = op
-	return cloneOperation(op), nil
+	v := state.Operation{Descriptor: d, State: state.OperationPlanned, Revision: 1, CreatedAt: now.UTC(), UpdatedAt: now.UTC()}
+	return v, t.tx.InsertOperation(v)
 }
-
-func (s *Store) GetOperation(id protocol.OperationID) (state.Operation, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	op, ok := s.operations[id]
-	if !ok {
-		return state.Operation{}, false
-	}
-	return cloneOperation(op), true
-}
-
-func (s *Store) MarkReady(id protocol.OperationID, expectedRevision uint64, now time.Time) (state.Operation, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	op, ok := s.operations[id]
-	if !ok {
-		return state.Operation{}, fmt.Errorf("%w: operation %s", ErrNotFound, id)
-	}
-	next, err := state.Transition(op, expectedRevision, state.OperationReady, now)
+func (t *Transaction) markReady(id protocol.OperationID, expectedRevision uint64, now time.Time) (state.Operation, error) {
+	op, err := t.tx.Operation(id)
 	if err != nil {
 		return state.Operation{}, err
 	}
-	s.operations[id] = next
-	return cloneOperation(next), nil
+	// Executing/verifying -> ready requires a recorded retry-safe verification.
+	if op.State != state.OperationPlanned {
+		return state.Operation{}, state.ErrInvalidTransition
+	}
+	return t.transition(op, expectedRevision, state.OperationReady, "", now)
 }
-
-func (s *Store) StartAttempt(
-	id protocol.OperationID,
-	expectedRevision uint64,
-	attemptID protocol.AttemptID,
-	leaseID protocol.LeaseID,
-	owner protocol.ActorID,
-	retryOf protocol.AttemptID,
-	now time.Time,
-) (state.Operation, state.Attempt, error) {
+func (t *Transaction) startAttempt(id protocol.OperationID, expectedRevision uint64, attemptID protocol.AttemptID, leaseID protocol.LeaseID, owner protocol.ActorID, retryOf protocol.AttemptID, now time.Time) (state.Operation, state.Attempt, error) {
 	if leaseID == "" || owner == "" {
 		return state.Operation{}, state.Attempt{}, errors.New("lease id and owner are required")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	op, ok := s.operations[id]
-	if !ok {
-		return state.Operation{}, state.Attempt{}, fmt.Errorf("%w: operation %s", ErrNotFound, id)
-	}
-	if op.Revision != expectedRevision {
-		return state.Operation{}, state.Attempt{}, fmt.Errorf("%w: got %d want %d", state.ErrRevisionConflict, expectedRevision, op.Revision)
-	}
-	if _, exists := s.attempts[attemptID]; exists {
-		return state.Operation{}, state.Attempt{}, fmt.Errorf("%w: attempt %s", ErrDuplicateID, attemptID)
-	}
-	if _, exists := s.leases[leaseID]; exists {
-		return state.Operation{}, state.Attempt{}, fmt.Errorf("%w: lease %s", ErrDuplicateID, leaseID)
-	}
-	if op.Descriptor.EffectClass == protocol.EffectMutation {
-		if conflict := s.findConflictLocked(op); conflict != "" {
-			return state.Operation{}, state.Attempt{}, fmt.Errorf("%w: operation %s conflicts with %s", ErrConflictScope, id, conflict)
-		}
-	}
-
-	next, attempt, err := state.StartAttempt(op, expectedRevision, attemptID, now)
+	op, err := t.tx.Operation(id)
 	if err != nil {
 		return state.Operation{}, state.Attempt{}, err
 	}
-	attempt.LeaseID = leaseID
-	attempt.OwnerActorID = owner
-	attempt.RetryOf = retryOf
-
-	s.operations[id] = next
-	s.attempts[attemptID] = attempt
-	s.leases[leaseID] = struct{}{}
-	return cloneOperation(next), attempt, nil
-}
-
-func (s *Store) BeginVerification(id protocol.OperationID, expectedRevision uint64, now time.Time) (state.Operation, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	op, ok := s.operations[id]
-	if !ok {
-		return state.Operation{}, fmt.Errorf("%w: operation %s", ErrNotFound, id)
-	}
-	activeID := op.ActiveAttemptID
-	next, err := state.Transition(op, expectedRevision, state.OperationVerifying, now)
-	if err != nil {
-		return state.Operation{}, err
-	}
-	if activeID != "" {
-		attempt := s.attempts[activeID]
-		if op.State == state.OperationExecuting {
-			attempt.State = state.AttemptReported
+	if retryOf != "" {
+		prior, e := t.tx.Attempt(retryOf)
+		if e != nil {
+			return state.Operation{}, state.Attempt{}, e
 		}
-		attempt.UpdatedAt = now
-		s.attempts[activeID] = attempt
+		if prior.OperationID != id {
+			return state.Operation{}, state.Attempt{}, ErrStaleOwnership
+		}
 	}
-	s.operations[id] = next
-	return cloneOperation(next), nil
+	next, a, err := state.StartAttempt(op, expectedRevision, attemptID, now.UTC())
+	if err != nil {
+		return state.Operation{}, state.Attempt{}, err
+	}
+	a.LeaseID = leaseID
+	a.OwnerActorID = owner
+	a.RetryOf = retryOf
+	if err = t.tx.InsertAttempt(a); err != nil {
+		return state.Operation{}, state.Attempt{}, err
+	}
+	if op.Descriptor.EffectClass == protocol.EffectMutation {
+		for _, scope := range op.Descriptor.ConflictScope {
+			if err = t.tx.Reserve(p.Reservation{Scope: scope, OperationID: id, AttemptID: a.ID, LeaseID: a.LeaseID, Generation: a.LeaseGeneration, CreatedAt: now.UTC()}); err != nil {
+				return state.Operation{}, state.Attempt{}, err
+			}
+		}
+	}
+	if err = t.tx.UpdateOperation(next, expectedRevision); err != nil {
+		return state.Operation{}, state.Attempt{}, err
+	}
+	return next, a, nil
 }
-
-func (s *Store) MarkUnknownOutcome(id protocol.OperationID, expectedRevision uint64, now time.Time) (state.Operation, error) {
-	return s.transitionWithAttemptState(id, expectedRevision, state.OperationUnknownOutcome, state.AttemptUncertain, now)
-}
-
-func (s *Store) MarkNotStarted(id protocol.OperationID, expectedRevision uint64, verification evidence.Verification, now time.Time) (state.Operation, error) {
-	if err := verification.Validate(); err != nil {
-		return state.Operation{}, err
-	}
-	if verification.Verdict != evidence.VerdictNotSatisfiedRetryable || !verification.RetryExecutionSafe {
-		return state.Operation{}, errors.New("not-started transition requires retry-safe verification")
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	op, ok := s.operations[id]
-	if !ok {
-		return state.Operation{}, fmt.Errorf("%w: operation %s", ErrNotFound, id)
-	}
-	if err := s.validateVerificationLocked(op, verification); err != nil {
-		return state.Operation{}, err
-	}
-	activeID := op.ActiveAttemptID
-	next, err := state.Transition(op, expectedRevision, state.OperationReady, now)
+func (t *Transaction) transition(op state.Operation, rev uint64, to state.OperationState, as state.AttemptState, now time.Time) (state.Operation, error) {
+	next, err := state.Transition(op, rev, to, now.UTC())
 	if err != nil {
 		return state.Operation{}, err
 	}
-	if activeID != "" {
-		attempt := s.attempts[activeID]
-		attempt.State = state.AttemptNotStarted
-		attempt.UpdatedAt = now
-		s.attempts[activeID] = attempt
+	if op.ActiveAttemptID != "" {
+		a, e := t.tx.Attempt(op.ActiveAttemptID)
+		if e != nil {
+			return state.Operation{}, e
+		}
+		if as != "" {
+			a.State = as
+		}
+		a.UpdatedAt = now.UTC()
+		if e = t.tx.UpdateAttempt(a); e != nil {
+			return state.Operation{}, e
+		}
 	}
-	s.operations[id] = next
-	return cloneOperation(next), nil
+	if !next.HoldsConflictReservation() {
+		if err = t.tx.Release(op.Descriptor.ID); err != nil {
+			return state.Operation{}, err
+		}
+	}
+	if err = t.tx.UpdateOperation(next, rev); err != nil {
+		return state.Operation{}, err
+	}
+	return next, nil
 }
-
-func (s *Store) transitionWithAttemptState(
-	id protocol.OperationID,
-	expectedRevision uint64,
-	to state.OperationState,
-	attemptState state.AttemptState,
-	now time.Time,
-) (state.Operation, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	op, ok := s.operations[id]
-	if !ok {
-		return state.Operation{}, fmt.Errorf("%w: operation %s", ErrNotFound, id)
-	}
-	activeID := op.ActiveAttemptID
-	next, err := state.Transition(op, expectedRevision, to, now)
+func (t *Transaction) beginVerification(id protocol.OperationID, expectedRevision uint64, now time.Time) (state.Operation, error) {
+	op, err := t.tx.Operation(id)
 	if err != nil {
 		return state.Operation{}, err
 	}
-	if activeID != "" {
-		attempt := s.attempts[activeID]
-		attempt.State = attemptState
-		attempt.UpdatedAt = now
-		s.attempts[activeID] = attempt
+	var as state.AttemptState
+	if op.State == state.OperationExecuting {
+		as = state.AttemptReported
 	}
-	s.operations[id] = next
-	return cloneOperation(next), nil
+	return t.transition(op, expectedRevision, state.OperationVerifying, as, now)
 }
-
-func (s *Store) RegisterEvidence(record evidence.Record) error {
-	if err := record.Validate(); err != nil {
+func (t *Transaction) markUnknownOutcome(id protocol.OperationID, expectedRevision uint64, now time.Time) (state.Operation, error) {
+	op, err := t.tx.Operation(id)
+	if err != nil {
+		return state.Operation{}, err
+	}
+	return t.transition(op, expectedRevision, state.OperationUnknownOutcome, state.AttemptUncertain, now)
+}
+func (t *Transaction) registerEvidence(v evidence.Record) error {
+	if err := v.Validate(); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, exists := s.evidence[record.ID]; exists {
-		return fmt.Errorf("%w: evidence %s", ErrDuplicateID, record.ID)
+	op, err := t.tx.Operation(v.OperationID)
+	if err != nil {
+		return err
 	}
-	op, ok := s.operations[record.OperationID]
-	if !ok || op.Descriptor.TaskID != record.TaskID {
+	if op.Descriptor.TaskID != v.TaskID {
 		return ErrEvidenceScope
 	}
-	if record.AttemptID != "" {
-		attempt, ok := s.attempts[record.AttemptID]
-		if !ok || attempt.OperationID != record.OperationID {
+	if v.AttemptID != "" {
+		a, e := t.tx.Attempt(v.AttemptID)
+		if e != nil {
+			return e
+		}
+		if a.OperationID != v.OperationID {
 			return ErrEvidenceScope
 		}
 	}
-	s.evidence[record.ID] = record
-	s.operationEvidence[record.OperationID] = append(s.operationEvidence[record.OperationID], record.ID)
+	v.ObservedAt = v.ObservedAt.UTC()
+	return t.tx.InsertEvidence(v)
+}
+func (t *Transaction) validateVerification(op state.Operation, v evidence.Verification) error {
+	if err := v.Validate(); err != nil {
+		return err
+	}
+	if v.OperationID != op.Descriptor.ID || v.PolicyRef != op.Descriptor.VerificationPolicyRef || v.AttemptID == "" || v.AttemptID != op.ActiveAttemptID {
+		return ErrEvidenceScope
+	}
+	seen := map[protocol.EvidenceID]bool{}
+	for _, id := range v.EvidenceIDs {
+		if seen[id] {
+			return ErrEvidenceScope
+		}
+		seen[id] = true
+		r, e := t.tx.Evidence(id)
+		if e != nil {
+			return e
+		}
+		if r.OperationID != v.OperationID || r.AttemptID != v.AttemptID {
+			return ErrEvidenceScope
+		}
+	}
 	return nil
 }
-
-func (s *Store) ApplyVerification(
-	id protocol.OperationID,
-	expectedRevision uint64,
-	verification evidence.Verification,
-	now time.Time,
-) (state.Operation, error) {
-	if err := verification.Validate(); err != nil {
-		return state.Operation{}, err
+func (t *Transaction) markNotStarted(id protocol.OperationID, expectedRevision uint64, v evidence.Verification, now time.Time) (state.Operation, error) {
+	if v.Verdict != evidence.VerdictNotSatisfiedRetryable || !v.RetryExecutionSafe {
+		return state.Operation{}, errors.New("not-started transition requires retry-safe verification")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	op, ok := s.operations[id]
-	if !ok {
-		return state.Operation{}, fmt.Errorf("%w: operation %s", ErrNotFound, id)
-	}
-	if err := s.validateVerificationLocked(op, verification); err != nil {
-		return state.Operation{}, err
-	}
-
-	var to state.OperationState
-	switch verification.Verdict {
-	case evidence.VerdictSatisfied:
-		to = state.OperationSucceeded
-	case evidence.VerdictNotSatisfiedRetryable:
-		to = state.OperationReady
-	case evidence.VerdictNotSatisfiedTerminal:
-		to = state.OperationFailed
-	case evidence.VerdictInconclusive:
-		to = state.OperationUnknownOutcome
-	default:
-		return state.Operation{}, errors.New("unsupported verification verdict")
-	}
-
-	activeID := op.ActiveAttemptID
-	next, err := state.Transition(op, expectedRevision, to, now)
+	return t.apply(id, expectedRevision, v, now, true)
+}
+func (t *Transaction) applyVerification(id protocol.OperationID, expectedRevision uint64, v evidence.Verification, now time.Time) (state.Operation, error) {
+	return t.apply(id, expectedRevision, v, now, false)
+}
+func (t *Transaction) apply(id protocol.OperationID, rev uint64, v evidence.Verification, now time.Time, notStarted bool) (state.Operation, error) {
+	op, err := t.tx.Operation(id)
 	if err != nil {
 		return state.Operation{}, err
 	}
-	if activeID != "" {
-		attempt := s.attempts[activeID]
-		attempt.State = state.AttemptClosed
-		if to == state.OperationUnknownOutcome {
-			attempt.State = state.AttemptUncertain
-		}
-		attempt.UpdatedAt = now
-		s.attempts[activeID] = attempt
+	if err = t.validateVerification(op, v); err != nil {
+		return state.Operation{}, err
 	}
-	s.operations[id] = next
-	return cloneOperation(next), nil
+	to := map[evidence.Verdict]state.OperationState{evidence.VerdictSatisfied: state.OperationSucceeded, evidence.VerdictNotSatisfiedRetryable: state.OperationReady, evidence.VerdictNotSatisfiedTerminal: state.OperationFailed, evidence.VerdictInconclusive: state.OperationUnknownOutcome}[v.Verdict]
+	as := state.AttemptClosed
+	if to == state.OperationUnknownOutcome {
+		as = state.AttemptUncertain
+	}
+	if notStarted {
+		as = state.AttemptNotStarted
+	}
+	v.VerifiedAt = v.VerifiedAt.UTC()
+	if err = t.tx.InsertVerification(v); err != nil {
+		return state.Operation{}, err
+	}
+	return t.transition(op, rev, to, as, now)
 }
-
-func (s *Store) validateVerificationLocked(op state.Operation, verification evidence.Verification) error {
-	if verification.OperationID != op.Descriptor.ID || verification.PolicyRef != op.Descriptor.VerificationPolicyRef {
-		return ErrEvidenceScope
-	}
-	if verification.AttemptID == "" || verification.AttemptID != op.ActiveAttemptID {
-		return ErrEvidenceScope
-	}
-	for _, evidenceID := range verification.EvidenceIDs {
-		record, ok := s.evidence[evidenceID]
-		if !ok || record.OperationID != op.Descriptor.ID || record.AttemptID != verification.AttemptID {
-			return ErrEvidenceScope
-		}
-	}
-	return nil
-}
-
-func (s *Store) CheckActiveAttemptContext(
-	id protocol.OperationID,
-	attemptID protocol.AttemptID,
-	leaseID protocol.LeaseID,
-	generation uint64,
-	owner protocol.ActorID,
-) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	op, ok := s.operations[id]
-	if !ok {
-		return fmt.Errorf("%w: operation %s", ErrNotFound, id)
+func checkActive(r p.Reader, id protocol.OperationID, attemptID protocol.AttemptID, leaseID protocol.LeaseID, generation uint64, owner protocol.ActorID) error {
+	op, err := r.Operation(id)
+	if err != nil {
+		return err
 	}
 	if op.ActiveAttemptID == "" || op.ActiveAttemptID != attemptID || op.LeaseGeneration != generation {
 		return ErrStaleOwnership
 	}
-	attempt, ok := s.attempts[attemptID]
-	if !ok || attempt.LeaseID != leaseID || attempt.LeaseGeneration != generation || attempt.OwnerActorID != owner {
+	a, err := r.Attempt(attemptID)
+	if err != nil {
+		return err
+	}
+	if a.LeaseID != leaseID || a.LeaseGeneration != generation || a.OwnerActorID != owner {
 		return ErrStaleOwnership
 	}
 	if op.State != state.OperationExecuting && op.State != state.OperationVerifying && op.State != state.OperationUnknownOutcome {
@@ -436,42 +322,195 @@ func (s *Store) CheckActiveAttemptContext(
 	}
 	return nil
 }
-
-func (s *Store) EvidenceForOperation(id protocol.OperationID) []evidence.Record {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	ids := s.operationEvidence[id]
-	out := make([]evidence.Record, 0, len(ids))
-	for _, evidenceID := range ids {
-		out = append(out, s.evidence[evidenceID])
+func (s *Store) CheckActiveAttemptContext(ctx context.Context, id protocol.OperationID, attemptID protocol.AttemptID, leaseID protocol.LeaseID, generation uint64, owner protocol.ActorID) error {
+	return s.repository.View(ctx, func(r p.Reader) error { return checkActive(r, id, attemptID, leaseID, generation, owner) })
+}
+func (t *Transaction) checkActiveAttemptContext(id protocol.OperationID, attemptID protocol.AttemptID, leaseID protocol.LeaseID, generation uint64, owner protocol.ActorID) error {
+	return checkActive(t.tx, id, attemptID, leaseID, generation, owner)
+}
+func (s *Store) RegisterMessage(ctx context.Context, env protocol.Envelope) (bool, error) {
+	return writeValue(s, ctx, func(t *Transaction) (bool, error) { return t.RegisterMessage(env) })
+}
+func (s *Store) CreateTask(ctx context.Context, id protocol.TaskID, now time.Time) (state.Task, error) {
+	return writeValue(s, ctx, func(t *Transaction) (state.Task, error) { return t.CreateTask(id, now) })
+}
+func (s *Store) CreateOperation(ctx context.Context, d protocol.OperationDescriptor, now time.Time) (state.Operation, error) {
+	return writeValue(s, ctx, func(t *Transaction) (state.Operation, error) { return t.CreateOperation(d, now) })
+}
+func (s *Store) MarkReady(ctx context.Context, id protocol.OperationID, rev uint64, now time.Time) (state.Operation, error) {
+	return writeValue(s, ctx, func(t *Transaction) (state.Operation, error) { return t.MarkReady(id, rev, now) })
+}
+func (s *Store) BeginVerification(ctx context.Context, id protocol.OperationID, rev uint64, now time.Time) (state.Operation, error) {
+	return writeValue(s, ctx, func(t *Transaction) (state.Operation, error) { return t.BeginVerification(id, rev, now) })
+}
+func (s *Store) MarkUnknownOutcome(ctx context.Context, id protocol.OperationID, rev uint64, now time.Time) (state.Operation, error) {
+	return writeValue(s, ctx, func(t *Transaction) (state.Operation, error) { return t.MarkUnknownOutcome(id, rev, now) })
+}
+func (s *Store) MarkNotStarted(ctx context.Context, id protocol.OperationID, rev uint64, v evidence.Verification, now time.Time) (state.Operation, error) {
+	return writeValue(s, ctx, func(t *Transaction) (state.Operation, error) { return t.MarkNotStarted(id, rev, v, now) })
+}
+func (s *Store) ApplyVerification(ctx context.Context, id protocol.OperationID, rev uint64, v evidence.Verification, now time.Time) (state.Operation, error) {
+	return writeValue(s, ctx, func(t *Transaction) (state.Operation, error) { return t.ApplyVerification(id, rev, v, now) })
+}
+func (s *Store) RegisterEvidence(ctx context.Context, v evidence.Record) error {
+	_, err := writeValue(s, ctx, func(t *Transaction) (struct{}, error) { return struct{}{}, t.RegisterEvidence(v) })
+	return err
+}
+func (s *Store) StartAttempt(ctx context.Context, id protocol.OperationID, rev uint64, attemptID protocol.AttemptID, leaseID protocol.LeaseID, owner protocol.ActorID, retryOf protocol.AttemptID, now time.Time) (state.Operation, state.Attempt, error) {
+	type result struct {
+		op state.Operation
+		a  state.Attempt
 	}
-	return out
+	v, err := writeValue(s, ctx, func(t *Transaction) (result, error) {
+		op, a, e := t.StartAttempt(id, rev, attemptID, leaseID, owner, retryOf, now)
+		return result{op, a}, e
+	})
+	return v.op, v.a, err
+}
+func (s *Store) GetTask(ctx context.Context, id protocol.TaskID) (state.Task, error) {
+	return readValue(s, ctx, func(r p.Reader) (state.Task, error) { return r.Task(id) })
+}
+func (s *Store) GetOperation(ctx context.Context, id protocol.OperationID) (state.Operation, error) {
+	return readValue(s, ctx, func(r p.Reader) (state.Operation, error) { return r.Operation(id) })
+}
+func (s *Store) GetAttempt(ctx context.Context, id protocol.AttemptID) (state.Attempt, error) {
+	return readValue(s, ctx, func(r p.Reader) (state.Attempt, error) { return r.Attempt(id) })
+}
+func (s *Store) GetVerification(ctx context.Context, id string) (evidence.Verification, error) {
+	return readValue(s, ctx, func(r p.Reader) (evidence.Verification, error) { return r.Verification(id) })
+}
+func (s *Store) EvidenceForOperation(ctx context.Context, id protocol.OperationID) ([]evidence.Record, error) {
+	return readValue(s, ctx, func(r p.Reader) ([]evidence.Record, error) { return r.EvidenceForOperation(id) })
 }
 
-func (s *Store) findConflictLocked(candidate state.Operation) protocol.OperationID {
-	for id, other := range s.operations {
-		if id == candidate.Descriptor.ID || !other.HoldsConflictReservation() {
-			continue
-		}
-		if scopesOverlap(candidate.Descriptor.ConflictScope, other.Descriptor.ConflictScope) {
-			return id
-		}
+func (t *Transaction) RegisterMessage(env protocol.Envelope) (v0 bool, err error) {
+	if t.failed != nil {
+		err = t.failed
+		return
 	}
-	return ""
+	v0, err = t.registerMessage(env)
+	if err != nil {
+		t.failed = err
+	}
+	return
 }
 
-func scopesOverlap(a, b []string) bool {
-	if len(a) == 0 || len(b) == 0 {
-		return false
+func (t *Transaction) CreateTask(id protocol.TaskID, now time.Time) (v0 state.Task, err error) {
+	if t.failed != nil {
+		err = t.failed
+		return
 	}
-	set := make(map[string]struct{}, len(a))
-	for _, scope := range a {
-		set[scope] = struct{}{}
+	v0, err = t.createTask(id, now)
+	if err != nil {
+		t.failed = err
 	}
-	for _, scope := range b {
-		if _, ok := set[scope]; ok {
-			return true
-		}
+	return
+}
+
+func (t *Transaction) CreateOperation(d protocol.OperationDescriptor, now time.Time) (v0 state.Operation, err error) {
+	if t.failed != nil {
+		err = t.failed
+		return
 	}
-	return false
+	v0, err = t.createOperation(d, now)
+	if err != nil {
+		t.failed = err
+	}
+	return
+}
+
+func (t *Transaction) MarkReady(id protocol.OperationID, rev uint64, now time.Time) (v0 state.Operation, err error) {
+	if t.failed != nil {
+		err = t.failed
+		return
+	}
+	v0, err = t.markReady(id, rev, now)
+	if err != nil {
+		t.failed = err
+	}
+	return
+}
+
+func (t *Transaction) BeginVerification(id protocol.OperationID, rev uint64, now time.Time) (v0 state.Operation, err error) {
+	if t.failed != nil {
+		err = t.failed
+		return
+	}
+	v0, err = t.beginVerification(id, rev, now)
+	if err != nil {
+		t.failed = err
+	}
+	return
+}
+
+func (t *Transaction) MarkUnknownOutcome(id protocol.OperationID, rev uint64, now time.Time) (v0 state.Operation, err error) {
+	if t.failed != nil {
+		err = t.failed
+		return
+	}
+	v0, err = t.markUnknownOutcome(id, rev, now)
+	if err != nil {
+		t.failed = err
+	}
+	return
+}
+
+func (t *Transaction) MarkNotStarted(id protocol.OperationID, rev uint64, v evidence.Verification, now time.Time) (v0 state.Operation, err error) {
+	if t.failed != nil {
+		err = t.failed
+		return
+	}
+	v0, err = t.markNotStarted(id, rev, v, now)
+	if err != nil {
+		t.failed = err
+	}
+	return
+}
+
+func (t *Transaction) ApplyVerification(id protocol.OperationID, rev uint64, v evidence.Verification, now time.Time) (v0 state.Operation, err error) {
+	if t.failed != nil {
+		err = t.failed
+		return
+	}
+	v0, err = t.applyVerification(id, rev, v, now)
+	if err != nil {
+		t.failed = err
+	}
+	return
+}
+
+func (t *Transaction) StartAttempt(id protocol.OperationID, rev uint64, attempt protocol.AttemptID, lease protocol.LeaseID, owner protocol.ActorID, retry protocol.AttemptID, now time.Time) (v0 state.Operation, v1 state.Attempt, err error) {
+	if t.failed != nil {
+		err = t.failed
+		return
+	}
+	v0, v1, err = t.startAttempt(id, rev, attempt, lease, owner, retry, now)
+	if err != nil {
+		t.failed = err
+	}
+	return
+}
+
+func (t *Transaction) RegisterEvidence(v evidence.Record) (err error) {
+	if t.failed != nil {
+		err = t.failed
+		return
+	}
+	err = t.registerEvidence(v)
+	if err != nil {
+		t.failed = err
+	}
+	return
+}
+
+func (t *Transaction) CheckActiveAttemptContext(id protocol.OperationID, attempt protocol.AttemptID, lease protocol.LeaseID, generation uint64, owner protocol.ActorID) (err error) {
+	if t.failed != nil {
+		err = t.failed
+		return
+	}
+	err = t.checkActiveAttemptContext(id, attempt, lease, generation, owner)
+	if err != nil {
+		t.failed = err
+	}
+	return
 }

@@ -17,12 +17,12 @@ Roadmap не заменяет `docs/project_baseline.md`. Baseline остаёт�
 
 ## 2. Текущее состояние
 
-Состояние после PR #13/#14, проверенный main@dd797372e761d120c20308fcc0ee4c227e2c9ea3 от 2026-09-19:
+Состояние с реализацией R3.1 от 2026-09-19 (результаты приёмки точных commits — в PR и #10):
 
 - foundation, R1, Gate A, R2 и Gate B завершены;
-- Go reference core и unit/regression tests существуют; store пока in-memory;
+- Go reference core использует общий persistence boundary с memory и SQLite; есть общий контрактный набор тестов;
 - exact validation R2 на Go 1.27.1 зафиксирована в docs/validation/r2-go-1.27.1.md;
-- SQLite выбран ADR-0002, но persistence/recovery/retention ещё не реализованы;
+- SQLite persistence/schema migrations/atomic operations реализованы в R3.1 по ADR-0002; recovery/retention ещё не завершены;
 - topology, первый transport и конкретные providers не выбраны;
 - минимальный CI добавлен PR #14, #9 закрыта: native tests/vet/build Windows/Linux и Linux race/gofmt; успешные runs перечислены в work_plan_ru.md;
 - ближайшая реализация продукта — R3 (#10), затем R4 (#11), R5 (#12), R6 (#8).
@@ -304,7 +304,7 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 R1, Gate A, R2 и Gate B завершены. Exact-toolchain validation R2 на Go 1.27.1 также выполнена.
 
-Минимальный CI Windows/Linux (#9) подтверждён и задача закрыта. Следующая задача продукта — **R3: durable state, recovery и retention** (#10), в трёх последовательных PR: транзакционное хранилище, recovery, retention/GC. Затем #11 → #12 → runtime-часть #8. Подробности: [work_plan_ru.md](work_plan_ru.md).
+Минимальный CI Windows/Linux (#9) подтверждён и задача закрыта. Транзакционное хранилище R3.1 реализовано. Следующая задача продукта — **R3.2: recovery** (#10), затем отдельный PR R3.3 retention/GC. Затем #11 → #12 → runtime-часть #8. Подробности: [work_plan_ru.md](work_plan_ru.md).
 
 Граница R3:
 

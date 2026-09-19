@@ -3,6 +3,7 @@ package state
 import (
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/dilukhin/agent_control_plane/internal/protocol"
@@ -42,6 +43,9 @@ func Transition(op Operation, expectedRevision uint64, to OperationState, now ti
 	if op.Revision != expectedRevision {
 		return Operation{}, fmt.Errorf("%w: got %d want %d", ErrRevisionConflict, expectedRevision, op.Revision)
 	}
+	if op.Revision == 0 || op.Revision >= math.MaxInt64 {
+		return Operation{}, errors.New("revision exhausted or invalid")
+	}
 	if now.IsZero() {
 		return Operation{}, errors.New("transition time is required")
 	}
@@ -65,6 +69,9 @@ func StartAttempt(op Operation, expectedRevision uint64, attemptID protocol.Atte
 	next, err := Transition(op, expectedRevision, OperationExecuting, now)
 	if err != nil {
 		return Operation{}, Attempt{}, err
+	}
+	if next.LeaseGeneration >= math.MaxInt64 {
+		return Operation{}, Attempt{}, errors.New("lease generation exhausted")
 	}
 	next.LeaseGeneration++
 	next.ActiveAttemptID = attemptID

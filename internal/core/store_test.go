@@ -1,7 +1,10 @@
 package core
 
 import (
+	"context"
 	"errors"
+	"github.com/dilukhin/agent_control_plane/internal/persistence/sqlite"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -27,41 +30,40 @@ func desc(task protocol.TaskID, op protocol.OperationID, target string) protocol
 
 func readyOperation(t *testing.T, s *Store, task protocol.TaskID, op protocol.OperationID, target string, now time.Time) state.Operation {
 	t.Helper()
-	if _, ok := s.GetTask(task); !ok {
-		if _, err := s.CreateTask(task, now); err != nil {
+	if _, err := s.GetTask(context.Background(), task); errors.Is(err, ErrNotFound) {
+		if _, err := s.CreateTask(context.Background(), task, now); err != nil {
 			t.Fatal(err)
 		}
 	}
-	created, err := s.CreateOperation(desc(task, op, target), now)
+	created, err := s.CreateOperation(context.Background(), desc(task, op, target), now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ready, err := s.MarkReady(op, created.Revision, now.Add(time.Second))
+	ready, err := s.MarkReady(context.Background(), op, created.Revision, now.Add(time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return ready
 }
 
-func TestUnknownOutcomeRequiresVerificationBeforeRetry(t *testing.T) {
-	s := NewStore()
+func testUnknownOutcomeRequiresVerificationBeforeRetry(t *testing.T, s *Store) {
 	now := time.Unix(100, 0)
 	op := readyOperation(t, s, "tsk_1", "op_1", "target:1", now)
 
-	executing, _, err := s.StartAttempt(op.Descriptor.ID, op.Revision, "att_1", "lease_1", "worker_1", "", now.Add(2*time.Second))
+	executing, _, err := s.StartAttempt(context.Background(), op.Descriptor.ID, op.Revision, "att_1", "lease_1", "worker_1", "", now.Add(2*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
-	unknown, err := s.MarkUnknownOutcome(op.Descriptor.ID, executing.Revision, now.Add(3*time.Second))
+	unknown, err := s.MarkUnknownOutcome(context.Background(), op.Descriptor.ID, executing.Revision, now.Add(3*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err := s.StartAttempt(op.Descriptor.ID, unknown.Revision, "att_2", "lease_2", "worker_2", "att_1", now.Add(4*time.Second)); !errors.Is(err, state.ErrInvalidTransition) {
+	if _, _, err := s.StartAttempt(context.Background(), op.Descriptor.ID, unknown.Revision, "att_2", "lease_2", "worker_2", "att_1", now.Add(4*time.Second)); !errors.Is(err, state.ErrInvalidTransition) {
 		t.Fatalf("direct retry from unknown outcome should fail, got %v", err)
 	}
 
-	verifying, err := s.BeginVerification(op.Descriptor.ID, unknown.Revision, now.Add(5*time.Second))
+	verifying, err := s.BeginVerification(context.Background(), op.Descriptor.ID, unknown.Revision, now.Add(5*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,10 +77,10 @@ func TestUnknownOutcomeRequiresVerificationBeforeRetry(t *testing.T) {
 		ObservedAt:    now.Add(6 * time.Second),
 		SubjectRef:    "target:1",
 	}
-	if err := s.RegisterEvidence(rec); err != nil {
+	if err := s.RegisterEvidence(context.Background(), rec); err != nil {
 		t.Fatal(err)
 	}
-	retryReady, err := s.ApplyVerification(op.Descriptor.ID, verifying.Revision, evidence.Verification{
+	retryReady, err := s.ApplyVerification(context.Background(), op.Descriptor.ID, verifying.Revision, evidence.Verification{
 		ID:                 "ver_1",
 		OperationID:        "op_1",
 		AttemptID:          "att_1",
@@ -95,7 +97,7 @@ func TestUnknownOutcomeRequiresVerificationBeforeRetry(t *testing.T) {
 	if retryReady.State != state.OperationReady {
 		t.Fatalf("expected ready after safe verification, got %s", retryReady.State)
 	}
-	second, attempt, err := s.StartAttempt(op.Descriptor.ID, retryReady.Revision, "att_2", "lease_2", "worker_2", "att_1", now.Add(8*time.Second))
+	second, attempt, err := s.StartAttempt(context.Background(), op.Descriptor.ID, retryReady.Revision, "att_2", "lease_2", "worker_2", "att_1", now.Add(8*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,22 +106,20 @@ func TestUnknownOutcomeRequiresVerificationBeforeRetry(t *testing.T) {
 	}
 }
 
-func TestOverlappingMutationScopesAreMutuallyExclusive(t *testing.T) {
-	s := NewStore()
+func testOverlappingMutationScopesAreMutuallyExclusive(t *testing.T, s *Store) {
 	now := time.Unix(100, 0)
 	a := readyOperation(t, s, "tsk_1", "op_a", "target:shared", now)
 	b := readyOperation(t, s, "tsk_1", "op_b", "target:shared", now)
 
-	if _, _, err := s.StartAttempt(a.Descriptor.ID, a.Revision, "att_a", "lease_a", "worker_a", "", now.Add(time.Second)); err != nil {
+	if _, _, err := s.StartAttempt(context.Background(), a.Descriptor.ID, a.Revision, "att_a", "lease_a", "worker_a", "", now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.StartAttempt(b.Descriptor.ID, b.Revision, "att_b", "lease_b", "worker_b", "", now.Add(time.Second)); !errors.Is(err, ErrConflictScope) {
+	if _, _, err := s.StartAttempt(context.Background(), b.Descriptor.ID, b.Revision, "att_b", "lease_b", "worker_b", "", now.Add(time.Second)); !errors.Is(err, ErrConflictScope) {
 		t.Fatalf("expected conflict scope error, got %v", err)
 	}
 }
 
-func TestConcurrentStartsOnSameScopeAllowOnlyOne(t *testing.T) {
-	s := NewStore()
+func testConcurrentStartsOnSameScopeAllowOnlyOne(t *testing.T, s *Store) {
 	now := time.Unix(100, 0)
 	a := readyOperation(t, s, "tsk_1", "op_a", "target:shared", now)
 	b := readyOperation(t, s, "tsk_1", "op_b", "target:shared", now)
@@ -130,12 +130,12 @@ func TestConcurrentStartsOnSameScopeAllowOnlyOne(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		_, _, err := s.StartAttempt(a.Descriptor.ID, a.Revision, "att_a", "lease_a", "worker_a", "", now.Add(time.Second))
+		_, _, err := s.StartAttempt(context.Background(), a.Descriptor.ID, a.Revision, "att_a", "lease_a", "worker_a", "", now.Add(time.Second))
 		results <- result{err}
 	}()
 	go func() {
 		defer wg.Done()
-		_, _, err := s.StartAttempt(b.Descriptor.ID, b.Revision, "att_b", "lease_b", "worker_b", "", now.Add(time.Second))
+		_, _, err := s.StartAttempt(context.Background(), b.Descriptor.ID, b.Revision, "att_b", "lease_b", "worker_b", "", now.Add(time.Second))
 		results <- result{err}
 	}()
 	wg.Wait()
@@ -157,29 +157,27 @@ func TestConcurrentStartsOnSameScopeAllowOnlyOne(t *testing.T) {
 	}
 }
 
-func TestDuplicateAttemptIDRejected(t *testing.T) {
-	s := NewStore()
+func testDuplicateAttemptIDRejected(t *testing.T, s *Store) {
 	now := time.Unix(100, 0)
 	a := readyOperation(t, s, "tsk_1", "op_a", "target:a", now)
 	b := readyOperation(t, s, "tsk_1", "op_b", "target:b", now)
 
-	if _, _, err := s.StartAttempt(a.Descriptor.ID, a.Revision, "att_dup", "lease_a", "worker_a", "", now.Add(time.Second)); err != nil {
+	if _, _, err := s.StartAttempt(context.Background(), a.Descriptor.ID, a.Revision, "att_dup", "lease_a", "worker_a", "", now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.StartAttempt(b.Descriptor.ID, b.Revision, "att_dup", "lease_b", "worker_b", "", now.Add(time.Second)); !errors.Is(err, ErrDuplicateID) {
+	if _, _, err := s.StartAttempt(context.Background(), b.Descriptor.ID, b.Revision, "att_dup", "lease_b", "worker_b", "", now.Add(time.Second)); !errors.Is(err, ErrDuplicateID) {
 		t.Fatalf("expected duplicate attempt id, got %v", err)
 	}
 }
 
-func TestEvidenceScopeAndVerification(t *testing.T) {
-	s := NewStore()
+func testEvidenceScopeAndVerification(t *testing.T, s *Store) {
 	now := time.Unix(100, 0)
 	op := readyOperation(t, s, "tsk_1", "op_1", "target:1", now)
-	executing, _, err := s.StartAttempt(op.Descriptor.ID, op.Revision, "att_1", "lease_1", "worker_1", "", now.Add(time.Second))
+	executing, _, err := s.StartAttempt(context.Background(), op.Descriptor.ID, op.Revision, "att_1", "lease_1", "worker_1", "", now.Add(time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
-	verifying, err := s.BeginVerification(op.Descriptor.ID, executing.Revision, now.Add(2*time.Second))
+	verifying, err := s.BeginVerification(context.Background(), op.Descriptor.ID, executing.Revision, now.Add(2*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,10 +191,10 @@ func TestEvidenceScopeAndVerification(t *testing.T) {
 		ObservedAt:    now.Add(3 * time.Second),
 		SubjectRef:    "target:1",
 	}
-	if err := s.RegisterEvidence(rec); err != nil {
+	if err := s.RegisterEvidence(context.Background(), rec); err != nil {
 		t.Fatal(err)
 	}
-	done, err := s.ApplyVerification("op_1", verifying.Revision, evidence.Verification{
+	done, err := s.ApplyVerification(context.Background(), "op_1", verifying.Revision, evidence.Verification{
 		ID:              "ver_1",
 		OperationID:     "op_1",
 		AttemptID:       "att_1",
@@ -212,22 +210,21 @@ func TestEvidenceScopeAndVerification(t *testing.T) {
 	if done.State != state.OperationSucceeded {
 		t.Fatalf("expected succeeded, got %s", done.State)
 	}
-	if got := s.EvidenceForOperation("op_1"); len(got) != 1 || got[0].ID != "ev_1" {
+	if got, err := s.EvidenceForOperation(context.Background(), "op_1"); err != nil || len(got) != 1 || got[0].ID != "ev_1" {
 		t.Fatalf("unexpected evidence: %+v", got)
 	}
 }
 
-func TestConfirmedNotStartedReleasesConflictReservation(t *testing.T) {
-	s := NewStore()
+func testConfirmedNotStartedReleasesConflictReservation(t *testing.T, s *Store) {
 	now := time.Unix(100, 0)
 	a := readyOperation(t, s, "tsk_1", "op_a", "target:shared", now)
 	b := readyOperation(t, s, "tsk_1", "op_b", "target:shared", now)
 
-	executing, _, err := s.StartAttempt(a.Descriptor.ID, a.Revision, "att_a", "lease_a", "worker_a", "", now.Add(time.Second))
+	executing, _, err := s.StartAttempt(context.Background(), a.Descriptor.ID, a.Revision, "att_a", "lease_a", "worker_a", "", now.Add(time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.StartAttempt(b.Descriptor.ID, b.Revision, "att_b", "lease_b", "worker_b", "", now.Add(2*time.Second)); !errors.Is(err, ErrConflictScope) {
+	if _, _, err := s.StartAttempt(context.Background(), b.Descriptor.ID, b.Revision, "att_b", "lease_b", "worker_b", "", now.Add(2*time.Second)); !errors.Is(err, ErrConflictScope) {
 		t.Fatalf("expected conflict before proof, got %v", err)
 	}
 
@@ -242,10 +239,10 @@ func TestConfirmedNotStartedReleasesConflictReservation(t *testing.T) {
 		SubjectRef:    "worker_a",
 		Summary:       "executor confirmed not started",
 	}
-	if err := s.RegisterEvidence(proof); err != nil {
+	if err := s.RegisterEvidence(context.Background(), proof); err != nil {
 		t.Fatal(err)
 	}
-	readyAgain, err := s.MarkNotStarted("op_a", executing.Revision, evidence.Verification{
+	readyAgain, err := s.MarkNotStarted(context.Background(), "op_a", executing.Revision, evidence.Verification{
 		ID:                 "ver_not_started",
 		OperationID:        "op_a",
 		AttemptID:          "att_a",
@@ -262,7 +259,7 @@ func TestConfirmedNotStartedReleasesConflictReservation(t *testing.T) {
 	if readyAgain.State != state.OperationReady {
 		t.Fatalf("expected ready, got %s", readyAgain.State)
 	}
-	if _, _, err := s.StartAttempt(b.Descriptor.ID, b.Revision, "att_b", "lease_b", "worker_b", "", now.Add(5*time.Second)); err != nil {
+	if _, _, err := s.StartAttempt(context.Background(), b.Descriptor.ID, b.Revision, "att_b", "lease_b", "worker_b", "", now.Add(5*time.Second)); err != nil {
 		t.Fatalf("conflict should be released after proof: %v", err)
 	}
 }
@@ -283,33 +280,31 @@ func testEnvelope(messageID protocol.MessageID) protocol.Envelope {
 	}
 }
 
-func TestMessageDeduplicationAndCollision(t *testing.T) {
-	s := NewStore()
+func testMessageDeduplicationAndCollision(t *testing.T, s *Store) {
 	env := testEnvelope("msg_1")
-	duplicate, err := s.RegisterMessage(env)
+	duplicate, err := s.RegisterMessage(context.Background(), env)
 	if err != nil || duplicate {
 		t.Fatalf("first registration duplicate=%v err=%v", duplicate, err)
 	}
 
 	env.Payload["intent"] = "mutated-after-registration"
 	replay := testEnvelope("msg_1")
-	duplicate, err = s.RegisterMessage(replay)
+	duplicate, err = s.RegisterMessage(context.Background(), replay)
 	if err != nil || !duplicate {
 		t.Fatalf("same message replay duplicate=%v err=%v", duplicate, err)
 	}
 
 	collision := testEnvelope("msg_1")
 	collision.Payload["intent"] = "different"
-	if _, err := s.RegisterMessage(collision); !errors.Is(err, ErrMessageIDCollision) {
+	if _, err := s.RegisterMessage(context.Background(), collision); !errors.Is(err, ErrMessageIDCollision) {
 		t.Fatalf("expected message-id collision, got %v", err)
 	}
 }
 
-func TestMarkNotStartedRejectsUnverifiedEvidence(t *testing.T) {
-	s := NewStore()
+func testMarkNotStartedRejectsUnverifiedEvidence(t *testing.T, s *Store) {
 	now := time.Unix(100, 0)
 	op := readyOperation(t, s, "tsk_1", "op_1", "target:1", now)
-	executing, _, err := s.StartAttempt(op.Descriptor.ID, op.Revision, "att_1", "lease_1", "worker_1", "", now.Add(time.Second))
+	executing, _, err := s.StartAttempt(context.Background(), op.Descriptor.ID, op.Revision, "att_1", "lease_1", "worker_1", "", now.Add(time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,10 +318,10 @@ func TestMarkNotStartedRejectsUnverifiedEvidence(t *testing.T) {
 		ObservedAt:    now.Add(2 * time.Second),
 		SubjectRef:    "target:1",
 	}
-	if err := s.RegisterEvidence(rec); err != nil {
+	if err := s.RegisterEvidence(context.Background(), rec); err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.MarkNotStarted("op_1", executing.Revision, evidence.Verification{
+	_, err = s.MarkNotStarted(context.Background(), "op_1", executing.Revision, evidence.Verification{
 		ID:              "ver_1",
 		OperationID:     "op_1",
 		AttemptID:       "att_1",
@@ -341,44 +336,42 @@ func TestMarkNotStartedRejectsUnverifiedEvidence(t *testing.T) {
 	}
 }
 
-func TestActiveAttemptContextRejectsStaleOwnership(t *testing.T) {
-	s := NewStore()
+func testActiveAttemptContextRejectsStaleOwnership(t *testing.T, s *Store) {
 	now := time.Unix(100, 0)
 	op := readyOperation(t, s, "tsk_1", "op_1", "target:1", now)
-	executing, attempt, err := s.StartAttempt(op.Descriptor.ID, op.Revision, "att_1", "lease_1", "worker_1", "", now.Add(time.Second))
+	executing, attempt, err := s.StartAttempt(context.Background(), op.Descriptor.ID, op.Revision, "att_1", "lease_1", "worker_1", "", now.Add(time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CheckActiveAttemptContext("op_1", attempt.ID, attempt.LeaseID, executing.LeaseGeneration, "worker_1"); err != nil {
+	if err := s.CheckActiveAttemptContext(context.Background(), "op_1", attempt.ID, attempt.LeaseID, executing.LeaseGeneration, "worker_1"); err != nil {
 		t.Fatalf("active context rejected: %v", err)
 	}
-	if err := s.CheckActiveAttemptContext("op_1", attempt.ID, attempt.LeaseID, executing.LeaseGeneration-1, "worker_1"); !errors.Is(err, ErrStaleOwnership) {
+	if err := s.CheckActiveAttemptContext(context.Background(), "op_1", attempt.ID, attempt.LeaseID, executing.LeaseGeneration-1, "worker_1"); !errors.Is(err, ErrStaleOwnership) {
 		t.Fatalf("expected stale generation rejection, got %v", err)
 	}
-	if err := s.CheckActiveAttemptContext("op_1", attempt.ID, "lease_stale", executing.LeaseGeneration, "worker_1"); !errors.Is(err, ErrStaleOwnership) {
+	if err := s.CheckActiveAttemptContext(context.Background(), "op_1", attempt.ID, "lease_stale", executing.LeaseGeneration, "worker_1"); !errors.Is(err, ErrStaleOwnership) {
 		t.Fatalf("expected stale lease rejection, got %v", err)
 	}
-	if err := s.CheckActiveAttemptContext("op_1", attempt.ID, attempt.LeaseID, executing.LeaseGeneration, "worker_stale"); !errors.Is(err, ErrStaleOwnership) {
+	if err := s.CheckActiveAttemptContext(context.Background(), "op_1", attempt.ID, attempt.LeaseID, executing.LeaseGeneration, "worker_stale"); !errors.Is(err, ErrStaleOwnership) {
 		t.Fatalf("expected stale owner rejection, got %v", err)
 	}
 }
 
-func TestOperationDescriptorIsIsolatedFromCallerMutation(t *testing.T) {
-	s := NewStore()
+func testOperationDescriptorIsIsolatedFromCallerMutation(t *testing.T, s *Store) {
 	now := time.Unix(100, 0)
-	if _, err := s.CreateTask("tsk_1", now); err != nil {
+	if _, err := s.CreateTask(context.Background(), "tsk_1", now); err != nil {
 		t.Fatal(err)
 	}
 	d := desc("tsk_1", "op_1", "target:original")
-	created, err := s.CreateOperation(d, now)
+	created, err := s.CreateOperation(context.Background(), d, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	d.ConflictScope[0] = "target:mutated-input"
 	created.Descriptor.ConflictScope[0] = "target:mutated-return"
 
-	stored, ok := s.GetOperation("op_1")
-	if !ok {
+	stored, err := s.GetOperation(context.Background(), "op_1")
+	if err != nil {
 		t.Fatal("operation missing")
 	}
 	if got := stored.Descriptor.ConflictScope[0]; got != "target:original" {
@@ -386,8 +379,47 @@ func TestOperationDescriptorIsIsolatedFromCallerMutation(t *testing.T) {
 	}
 
 	stored.Descriptor.ConflictScope[0] = "target:mutated-getter"
-	again, _ := s.GetOperation("op_1")
+	again, _ := s.GetOperation(context.Background(), "op_1")
 	if got := again.Descriptor.ConflictScope[0]; got != "target:original" {
 		t.Fatalf("stored conflict scope mutated through getter alias: %q", got)
+	}
+}
+
+func TestBackendContracts(t *testing.T) {
+	for _, backend := range []string{"memory", "sqlite"} {
+		t.Run(backend, func(t *testing.T) {
+			cases := map[string]func(*testing.T, *Store){
+				"UnknownOutcomeRequiresVerificationBeforeRetry":   testUnknownOutcomeRequiresVerificationBeforeRetry,
+				"OverlappingMutationScopesAreMutuallyExclusive":   testOverlappingMutationScopesAreMutuallyExclusive,
+				"ConcurrentStartsOnSameScopeAllowOnlyOne":         testConcurrentStartsOnSameScopeAllowOnlyOne,
+				"DuplicateAttemptIDRejected":                      testDuplicateAttemptIDRejected,
+				"EvidenceScopeAndVerification":                    testEvidenceScopeAndVerification,
+				"ConfirmedNotStartedReleasesConflictReservation":  testConfirmedNotStartedReleasesConflictReservation,
+				"MessageDeduplicationAndCollision":                testMessageDeduplicationAndCollision,
+				"MarkNotStartedRejectsUnverifiedEvidence":         testMarkNotStartedRejectsUnverifiedEvidence,
+				"ActiveAttemptContextRejectsStaleOwnership":       testActiveAttemptContextRejectsStaleOwnership,
+				"OperationDescriptorIsIsolatedFromCallerMutation": testOperationDescriptorIsIsolatedFromCallerMutation,
+			}
+			for name, fn := range cases {
+				t.Run(name, func(t *testing.T) {
+					var s *Store
+					if backend == "memory" {
+						s = NewStore()
+					} else {
+						r, err := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "state.db"), sqlite.Options{})
+						if err != nil {
+							t.Fatal(err)
+						}
+						s = NewWithRepository(r)
+					}
+					t.Cleanup(func() {
+						if err := s.Close(); err != nil {
+							t.Error(err)
+						}
+					})
+					fn(t, s)
+				})
+			}
+		})
 	}
 }
