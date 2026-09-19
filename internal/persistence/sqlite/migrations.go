@@ -23,7 +23,7 @@ type migration struct {
 
 func migrations() []migration {
 	out := []migration{}
-	for i, name := range []string{"001_initial.sql", "002_recovery.sql"} {
+	for i, name := range []string{"001_initial.sql", "002_recovery.sql", "003_retention.sql"} {
 		b, err := migrationFiles.ReadFile("migrations/" + name)
 		if err != nil {
 			panic(err)

@@ -26,10 +26,13 @@ var (
 	ErrStaleOwnership     = errors.New("stale or invalid execution ownership")
 )
 
-type Store struct{ repository p.Repository }
+type Store struct {
+	repository p.Repository
+	now        func() time.Time
+}
 
 func NewStore() *Store                        { return NewWithRepository(memory.New()) }
-func NewWithRepository(r p.Repository) *Store { return &Store{repository: r} }
+func NewWithRepository(r p.Repository) *Store { return &Store{repository: r, now: time.Now} }
 func (s *Store) Close() error                 { return s.repository.Close() }
 
 // Transaction exposes the same decisions for an atomic message/state update.
@@ -37,12 +40,13 @@ func (s *Store) Close() error                 { return s.repository.Close() }
 type Transaction struct {
 	tx     p.Tx
 	failed error
+	now    time.Time
 }
 
 func writeValue[T any](s *Store, ctx context.Context, fn func(*Transaction) (T, error)) (T, error) {
 	var out T
 	err := s.repository.Update(ctx, func(tx p.Tx) error {
-		t := &Transaction{tx: tx}
+		t := &Transaction{tx: tx, now: s.now().UTC()}
 		var e error
 		out, e = fn(t)
 		if e == nil {
@@ -86,6 +90,17 @@ func (t *Transaction) registerMessage(env protocol.Envelope) (bool, error) {
 	if err := env.Validate(); err != nil {
 		return false, err
 	}
+	floor, err := t.tx.MessageFloor()
+	if err != nil {
+		return false, err
+	}
+	cutoff := t.now.Add(-p.ReplayWindow).Unix()
+	if floor > cutoff {
+		cutoff = floor
+	}
+	if env.IssuedAt.Unix() < cutoff || env.IssuedAt.After(t.now.Add(5*time.Minute)) {
+		return false, p.ErrExpiredMessage
+	}
 	env.IssuedAt = env.IssuedAt.UTC()
 	if env.DeadlineAt != nil {
 		utc := env.DeadlineAt.UTC()
@@ -106,7 +121,36 @@ func (t *Transaction) registerMessage(env protocol.Envelope) (bool, error) {
 	if !errors.Is(err, ErrNotFound) {
 		return false, err
 	}
-	return false, t.tx.InsertMessage(p.Message{ID: env.MessageID, TaskID: env.TaskID, OperationID: env.OperationID, AttemptID: env.AttemptID, Digest: digest, IssuedAt: env.IssuedAt})
+	if env.OperationID != "" {
+		op, e := t.tx.Operation(env.OperationID)
+		if e == nil && op.Descriptor.TaskID != env.TaskID {
+			return false, ErrEvidenceScope
+		}
+		if e != nil && !errors.Is(e, ErrNotFound) {
+			return false, e
+		}
+	}
+	if env.AttemptID != "" {
+		a, e := t.tx.Attempt(env.AttemptID)
+		if e == nil && a.OperationID != env.OperationID {
+			return false, ErrEvidenceScope
+		}
+		if e != nil && !errors.Is(e, ErrNotFound) {
+			return false, e
+		}
+	}
+	task, e := t.tx.Task(env.TaskID)
+	if e == nil && terminalTask(task.State) {
+		return false, p.ErrTaskTerminal
+	}
+	if e != nil && !errors.Is(e, ErrNotFound) {
+		return false, e
+	}
+	expires := t.now.Add(p.ReplayWindow).Unix()
+	if other := env.IssuedAt.Add(p.ReplayWindow).Unix(); other > expires {
+		expires = other
+	}
+	return false, t.tx.InsertMessage(p.Message{ExpiresAt: expires, ID: env.MessageID, TaskID: env.TaskID, OperationID: env.OperationID, AttemptID: env.AttemptID, Digest: digest, IssuedAt: env.IssuedAt})
 }
 func (t *Transaction) createTask(id protocol.TaskID, now time.Time) (state.Task, error) {
 	if id == "" || now.IsZero() {
@@ -123,8 +167,12 @@ func (t *Transaction) createOperation(d protocol.OperationDescriptor, now time.T
 	if now.IsZero() {
 		return state.Operation{}, errors.New("creation time is required")
 	}
-	if _, err := t.tx.Task(d.TaskID); err != nil {
+	task, err := t.tx.Task(d.TaskID)
+	if err != nil {
 		return state.Operation{}, err
+	}
+	if terminalTask(task.State) {
+		return state.Operation{}, p.ErrTaskTerminal
 	}
 	v := state.Operation{Descriptor: d, State: state.OperationPlanned, Revision: 1, CreatedAt: now.UTC(), UpdatedAt: now.UTC()}
 	return v, t.tx.InsertOperation(v)
@@ -244,6 +292,13 @@ func (t *Transaction) registerEvidence(v evidence.Record) error {
 		if a.OperationID != v.OperationID {
 			return ErrEvidenceScope
 		}
+	}
+	task, err := t.tx.Task(v.TaskID)
+	if err != nil {
+		return err
+	}
+	if terminalTask(task.State) {
+		return p.ErrTaskTerminal
 	}
 	v.ObservedAt = v.ObservedAt.UTC()
 	return t.tx.InsertEvidence(v)

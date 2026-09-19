@@ -47,11 +47,11 @@ Digest v1: проверенный envelope с UTC `issued_at`/`deadline_at` се
 
 Пул ограничен четырьмя соединениями. WAL, FULL synchronous, foreign keys и finite busy timeout применяются/проверяются; DSN применяет connection-scoped настройки на каждом новом соединении. Busy timeout по умолчанию 5 s, transaction budget 10 s, допустимый диапазон каждого параметра 1 ms–30 s. При заимствовании соединения lock wait дополнительно ограничивается оставшимся context budget. Writes используют `BEGIN IMMEDIATE`, reads — snapshot transaction. Rollback использует отдельный конечный context; соединение исключается из пула, если rollback не подтверждён.
 
-Новая БД получает `auto_vacuum=INCREMENTAL` до первой schema transaction. Включение режима не означает реализацию GC: вызовы bounded vacuum и retention policy относятся к R3.3. На открытии выполняются `quick_check` и `foreign_key_check`.
+Новая БД получает `auto_vacuum=INCREMENTAL` до первой schema transaction. Вызовы bounded vacuum и политика очистки реализованы отдельно в [R3.3](retention.md). На открытии выполняются `quick_check` и `foreign_key_check`.
 
 ## Версии и миграции
 
-Первая persisted schema — v1; текущая v2 добавляет revocations для R3.2. R2 хранил только память, поэтому единственная допустимая предыдущая fixture — пустая БД v0. Импорт произвольной SQLite-БД не выполняется. Embedded SQL migrations выполняются последовательно в transaction вместе с историей и номером версии; при ошибке DDL/data/history/version откатываются. Нет down migrations, удаления или автоматического пересоздания incompatible DB.
+Первая persisted schema — v1; v2 добавляет revocations для R3.2, текущая v3 — сроки сообщений, replay floor и индексы R3.3. R2 хранил только память: начальная fixture — пустая БД v0; для следующих миграций поддерживаются и проверяются также v1/v2. Импорт произвольной SQLite-БД не выполняется. Embedded SQL migrations выполняются последовательно в transaction вместе с историей и номером версии; при ошибке DDL/data/history/version откатываются. Нет down migrations, удаления или автоматического пересоздания incompatible DB.
 
 Unsupported newer version, иной application ID, непоследовательная/изменённая история отклоняются. Schema version/history повторно проверяются внутри каждого read/write transaction, поэтому уже открытый старый handle не пишет после upgrade другим process. История migration проверяет совместимость, но не является защитой от злонамеренного изменения БД владельцем файлов. При ошибке открытия файл сохраняется для диагностики.
 
@@ -59,4 +59,4 @@ Unsupported newer version, иной application ID, непоследовател
 
 ## Граница готовности
 
-R3.1 обеспечивает persistence и атомарность. Open/reopen не запускает scheduler, не классифицирует работу и не повторяет execution. Recovery inventory и отзыв полномочий реализованы в [R3.2](recovery.md); bounded retention/GC — к R3.3. До их завершения #10 открыт, долговременная production эксплуатация R3 не заявляется. Тесты и границы доказательств: [validation record](validation/r3.1-sqlite.md).
+R3.1 обеспечивает persistence и атомарность. Open/reopen не запускает scheduler, не классифицирует работу и не повторяет execution. Recovery inventory и отзыв полномочий реализованы в [R3.2](recovery.md); bounded retention/GC реализован в [R3.3](retention.md). Библиотечный этап R3 завершён; готовность службы к эксплуатации не заявляется до следующих этапов. Тесты и границы доказательств: [validation record](validation/r3.1-sqlite.md).

@@ -15,6 +15,7 @@ import (
 )
 
 type data struct {
+	messageFloor  int64
 	revocations   map[protocol.AttemptID]p.Revocation
 	tasks         map[protocol.TaskID]state.Task
 	ops           map[protocol.OperationID]state.Operation
@@ -80,7 +81,7 @@ func (r *Repository) run(ctx context.Context, write bool, fn func(p.Tx) error) e
 	}
 	// Copy-on-write makes even a late callback error atomic. Values with slices
 	// are cloned on both input and output, so the snapshot has no mutable aliases.
-	d := data{maps.Clone(r.d.revocations), maps.Clone(r.d.tasks), maps.Clone(r.d.ops), maps.Clone(r.d.attempts),
+	d := data{r.d.messageFloor, maps.Clone(r.d.revocations), maps.Clone(r.d.tasks), maps.Clone(r.d.ops), maps.Clone(r.d.attempts),
 		maps.Clone(r.d.evidence), maps.Clone(r.d.verifications), maps.Clone(r.d.messages), maps.Clone(r.d.reservations)}
 	t := &transaction{d: &d, write: write}
 	if err := fn(t); err != nil {
