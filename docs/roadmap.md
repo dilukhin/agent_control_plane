@@ -25,7 +25,7 @@ Roadmap не заменяет `docs/project_baseline.md`. Baseline остаёт�
 - SQLite persistence/schema migrations/atomic operations реализованы в R3.1 по ADR-0002; R3.2 реализует восстановление и отзыв полномочий; R3.3 — ограниченное хранение, очистку и обслуживание SQLite;
 - topology, первый transport и конкретные providers не выбраны;
 - минимальный CI добавлен PR #14, #9 закрыта: native tests/vet/build Windows/Linux и Linux race/gofmt; успешные runs перечислены в work_plan_ru.md;
-- R3 (#10) реализован; ближайшая реализация продукта — R4 (#11), затем R5 (#12), R6 (#8).
+- R3 (#10) реализован; R4 (#11) реализован в текущем изменении: [контракт исполнителей и поставщиков](worker_provider_contract.md). После его приёмки — R5 (#12), затем R6 (#8).
 
 Текущий порядок и критерии завершения: [work_plan_ru.md](work_plan_ru.md). Начальное состояние «только foundation» является историей проекта, а не текущим статусом.
 
@@ -306,7 +306,7 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 R1, Gate A, R2 и Gate B завершены. Exact-toolchain validation R2 на Go 1.27.1 также выполнена.
 
-Минимальный CI Windows/Linux (#9) подтверждён и задача закрыта. Транзакционное хранилище R3.1 реализовано. R3.2 recovery и R3.3 retention/GC также реализованы отдельными изменениями. Следующая задача продукта — **R4: worker/provider contracts** (#11). Затем #12 → runtime-часть #8. Подробности: [work_plan_ru.md](work_plan_ru.md).
+Минимальный CI Windows/Linux (#9) подтверждён и задача закрыта. Транзакционное хранилище R3.1 реализовано. R3.2 recovery и R3.3 retention/GC также реализованы отдельными изменениями. R4 (#11) реализован в текущем изменении и ожидает приёмки; контракт и ограничения — [worker_provider_contract.md](worker_provider_contract.md). После приёмки следующая задача — #12 (R5), затем runtime-часть #8. Подробности: [work_plan_ru.md](work_plan_ru.md).
 
 Объём завершённого R3:
 
