@@ -1,5 +1,7 @@
 # agent_control_plane
 
+Начать знакомство: [как всё будет устроено и работать, с примерами LanFabric и Struna](docs/how_it_works_ru.md).
+
 `agent_control_plane` — верхнеуровневый control plane для координации ChatGPT Web, локальных и удалённых workers/agents, разных моделей и долгоживущих или отложенных задач.
 
 ## Текущий статус
