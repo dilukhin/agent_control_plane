@@ -1,7 +1,7 @@
 ---
 document_type: validation_record
 stage: R5
-status: local_checks_passed
+status: checks_passed
 date: 2026-11-01
 ---
 
@@ -19,7 +19,7 @@ date: 2026-11-01
 
 ## Покрытие и наблюдённые отказы
 
-В новом пакете process: 15 верхнеуровневых тестовых функций и 79 конечных сценариев, включая подслучаи memory/SQLite. Его журнал содержит 114 pass-событий с учётом родительских тестов; общий набор — 296 pass-событий тестов/подслучаев. Это не 296 независимых тестовых функций.
+В новом пакете process: 15 верхнеуровневых тестовых функций и 79 конечных сценариев, включая подслучаи memory/SQLite. Его журнал содержит 114 pass-событий с учётом родительских тестов; общий набор — 299 pass-событий тестов/подслучаев. Это не 299 независимых тестовых функций.
 
 Проверены:
 
@@ -47,7 +47,7 @@ date: 2026-11-01
 | Проверка | Результат |
 |---|---|
 | go test -json -count=1 -timeout=5m ./... | PASS, fail-событий нет |
-| go test -race -count=1 -timeout=5m ./... | PASS; пакет process 20.311 s |
+| go test -race -count=1 -timeout=5m ./... | PASS; пакет process 20.661 s |
 | go vet ./... | PASS |
 | CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./... | PASS |
 | CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./... | PASS, только cross-build |
@@ -63,6 +63,7 @@ Native Windows tests локально не запускались. Они обя
 | Go-файл | Git blob SHA |
 |---|---|
 | `cmd/acp-reference-worker/main.go` | `500330e33a9d66fbc99f7943ac666ef15f92981f` |
+| `internal/execution/runner_test.go` | `55b03d165c27dfe87fa550be7a3ba00b70dbbc66` |
 | `internal/reference/verify.go` | `00a3698a1f46380f539205308b0c2fcc4dd2eaef` |
 | `internal/transport/process/serve.go` | `bfb3515aad0554d5b3dd8618e22bf6744235aa3b` |
 | `internal/transport/process/wire.go` | `9063bffc34c0d371cade289757b03b7b00988d8c` |
@@ -70,11 +71,19 @@ Native Windows tests локально не запускались. Они обя
 | `internal/transport/process/worker.go` | `e2c85b04c620538042eb6cc265c2fe59cde68547` |
 | `internal/transport/process/worker_test.go` | `beb86d4e8859467836e80bf9afeb933c95c6b8fd` |
 
-SHA-256 последовательности отсортированных изменённых Go-файлов `path + NUL + bytes + NUL`: `8be0ddbf86c2bef16d9eec8b84ab6e4f6a824c5800f58fc709aa542b5f9168c0`. Документационный commit с результатами CI не изменяет этот набор.
+SHA-256 последовательности отсортированных изменённых Go-файлов `path + NUL + bytes + NUL`: `b1880f1ef17f6c2b6d5eabdb96c4ee773d8b05926fa44404fa470e45531064d4`. Документационный commit с результатами CI не изменяет этот набор.
 
 ## Публикация и CI
 
-На момент подготовки локального снимка PR и его CI ещё не созданы. Фактические head, run/jobs, результат слияния и main read-back фиксируются в PR и #12 после публикации; успешный локальный run не выдаётся за native Windows или main CI.
+Реализация опубликована в [PR №24](https://github.com/dilukhin/agent_control_plane/pull/24), начальный head `b98bf3536fef907b56247e368b0362e479e50168`. В [первом CI 41324368643](https://github.com/dilukhin/agent_control_plane/actions/runs/41324368643) Linux и native Windows прошли; проверка гонок нового process также прошла, но общий race-job упал на старом тесте R4 `TestFailureAndCancellationRemainUnknown/timeout/sqlite`.
+
+Старый тест начинал 100 ms до принятия/SQLite и затем требовал ровно один вызов поставщика. Искусственная задержка ограниченной контрольной точки после принятия воспроизвела допустимый исход: zero calls, unknown и duplicate при повторе. Рабочий Runner корректен; ошибочным было требование теста к моменту отсчёта. Таймер теста теперь начинается внутри поставщика, сохраняя проверку одного вызова. Добавлена отдельная регрессия отмены до запуска с нулём вызовов и отсутствием повтора; она синхронизируется по выданному поколению, без ожидания случайного времени. Временный диагностический файл удалён; постоянные проверки входят в runner_test.go.
+
+Исправление `2a7892ad6c8487081fac15ba4cdd6d67abcdffc8` меняет только тест R4. Новый тест и сценарий after-entry timeout дополнительно прошли `go test -race -count=5 -timeout=2m ./internal/execution -run 'TestFailureAndCancellationRemainUnknown|TestCancellationBeforeDispatchNeverRetries'`; полный локальный набор/race/vet также повторён успешно. Рабочий код R4 и транзакционные контракты не изменялись.
+
+[Go CI 41325063093](https://github.com/dilukhin/agent_control_plane/actions/runs/41325063093) коммита `2a7892ad6c8487081fac15ba4cdd6d67abcdffc8`: **3/3 jobs и обязательные steps completed/success**. Через Connector подтверждены tests/vet/pure-Go build непосредственно на Linux и Windows, race/gofmt на Linux. Это native Windows evidence, а не результат местной cross-build.
+
+Последующее обновление этого отчёта не меняет Go-код: точные восемь blob и состав diff проверяются отдельно. CI итогового документационного head, результат слияния и push-run фактического main фиксируются в PR №24 и #12 после соответствующих действий; успешный PR run не выдаётся за ещё не состоявшийся main run.
 
 ## Совместимость и ограничения
 
