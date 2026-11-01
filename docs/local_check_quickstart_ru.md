@@ -14,14 +14,15 @@ go build -o acp ./cmd/acp
 
 Профиль LanFabric подготовлен для Python-файлов коммита `cbe7fcb76415133b6eda1902cafde40125a4f77a`, версия 0.0.18. В нём 22 точные SHA-256 исходных и проверочных файлов; запускается `python -B tests_local/run_local_checks.py`. Время ограничено 180 секундами, общий stdout/stderr — 64 KiB. Выбирайте копию проекта, в которой допустимы создаваемые локальными тестами временные файлы и `__pycache__`; серверы и облако не являются целью.
 
-Не переключайте и не очищайте грязную рабочую копию ради примера. Сначала обычным способом установите её точное состояние. При несовпадении байтов ACP откажет до исполнения. CRLF/LF тоже различаются; совпадение имени ветки или версии не подменяет проверку файлов. Для изменённой версии нужен отдельно рассмотренный профиль с актуальными суммами, а не отключение проверки.
+Не переключайте и не очищайте грязную рабочую копию ради примера. Сначала обычным способом установите её точное состояние. При несовпадении байтов ACP откажет до исполнения. Совпадение имени ветки или версии не подменяет проверку файлов. Для изменённой версии нужен отдельно рассмотренный профиль с актуальными суммами, а не отключение проверки. Штатный prepare может создать новый профиль только при доказанном отличии CRLF/LF либо точном совпадении; код проекта он не меняет, существующий выходной файл не перезаписывает.
 
 ## Windows
 
 Ниже пример для документированного workspace LanFabricRoot. Уточните фактическое расположение `acp.exe` и исходников ACP. Каталог состояния должен быть новым либо уже принадлежащим ACP. Он находится вне рабочей копии LanFabric.
 
 ```powershell
-.\acp.exe check --state C:\Users\Dima\Projects\LanFabricRoot\reports\acp-local-state --task LF-20261102-ACP-01 --spec C:\path\to\agent_control_plane\examples\lanfabric-local-checks.json --program python --workspace C:\Users\Dima\Projects\LanFabricRoot\LanFabric --show-output
+.\acp.exe prepare --spec C:\path\to\agent_control_plane\examples\lanfabric-local-checks.json --program python --workspace C:\Users\Dima\Projects\LanFabricRoot\LanFabric --out .\lanfabric-check-local.json
+.\acp.exe check --state C:\Users\Dima\Projects\LanFabricRoot\reports\acp-local-state --task LF-20261102-ACP-01 --spec .\lanfabric-check-local.json --program python --workspace C:\Users\Dima\Projects\LanFabricRoot\LanFabric --show-output
 ```
 
 `--program` можно задать абсолютным путём к нужному `python.exe`. Если папка содержит пробелы, заключите значение аргумента в кавычки. Для первого прогона желательно выбрать отдельную проверочную копию проекта с известным снимком.
@@ -29,7 +30,8 @@ go build -o acp ./cmd/acp
 ## Linux
 
 ```bash
-./acp check --state ../acp-local-state --task LF-20261102-ACP-01 --spec examples/lanfabric-local-checks.json --program python3 --workspace /absolute/path/to/LanFabric --show-output
+./acp prepare --spec examples/lanfabric-local-checks.json --program python3 --workspace /absolute/path/to/LanFabric --out ../lanfabric-check-local.json
+./acp check --state ../acp-local-state --task LF-20261102-ACP-01 --spec ../lanfabric-check-local.json --program python3 --workspace /absolute/path/to/LanFabric --show-output
 ```
 
 Новый ID означает новое намерение запуска. Сохраняйте его для дальнейших обращений к этой задаче и не переиспользуйте после очистки истории. Повтор той же команды с тем же ID не запускает проверку ещё раз.

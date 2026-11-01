@@ -204,3 +204,42 @@ func validDigest(v string) bool {
 	_, err := hex.DecodeString(v)
 	return len(v) == 64 && err == nil
 }
+
+// Prepare creates a new operator profile only for byte-identical inputs or
+// CRLF-to-LF equivalents of the pinned bytes. Other source changes fail closed.
+// It does not execute a program, alter project files, or replace an output file.
+func Prepare(specPath, program, workspace, output string) error {
+	c, err := Load(specPath, program, workspace)
+	if err != nil && !errors.Is(err, ErrInputs) {
+		return err
+	}
+	total := 0
+	for path, expected := range c.Spec.Inputs {
+		b, err := readInput(c.Workspace, path)
+		if err != nil {
+			return err
+		}
+		total += len(b)
+		if total > 16*1024*1024 || (sum(b) != expected && sum(bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n"))) != expected) {
+			return ErrInputs
+		}
+		c.Spec.Inputs[path] = sum(b)
+	}
+	b, err := json.MarshalIndent(c.Spec, "", "  ")
+	if err != nil || len(b)+1 > 64*1024 {
+		return ErrConfig
+	}
+	f, err := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return ErrConfig
+	}
+	_, err = f.Write(append(b, '\n'))
+	if err == nil {
+		err = f.Sync()
+	}
+	ce := f.Close()
+	if err != nil || ce != nil {
+		return ErrConfig
+	}
+	return nil
+}

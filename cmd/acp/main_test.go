@@ -24,7 +24,7 @@ func TestCLIChild(t *testing.T) {
 }
 
 func TestHelpAndInvalidArguments(t *testing.T) {
-	for _, args := range [][]string{nil, {"--help"}, {"check", "--help"}, {"status", "--help"}, {"recover", "--help"}, {"gc", "--help"}} {
+	for _, args := range [][]string{nil, {"--help"}, {"prepare", "--help"}, {"check", "--help"}, {"status", "--help"}, {"recover", "--help"}, {"gc", "--help"}} {
 		var out, err bytes.Buffer
 		if code := run(args, &out, &err); code != 0 {
 			t.Fatalf("%v: %d %s", args, code, err.String())
@@ -50,6 +50,12 @@ func TestCLIRealCommandStatusAndFailure(t *testing.T) {
 			os.WriteFile(spec, b, 0600)
 			exe, _ := os.Executable()
 			root := filepath.Join(t.TempDir(), "state")
+			prepared := filepath.Join(t.TempDir(), "local.json")
+			var prepOut, prepErr bytes.Buffer
+			if code := run([]string{"prepare", "--spec", spec, "--program", exe, "--workspace", work, "--out", prepared}, &prepOut, &prepErr); code != 0 {
+				t.Fatalf("prepare %d %s", code, prepErr.String())
+			}
+			spec = prepared
 			args := []string{"check", "--state", root, "--task", "cli-check", "--spec", spec, "--workspace", work, "--program", exe}
 			var out, err bytes.Buffer
 			want := 0

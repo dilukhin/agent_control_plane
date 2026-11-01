@@ -424,3 +424,37 @@ func TestCancelledContextAndInvalidTaskDoNotExecute(t *testing.T) {
 		t.Fatal("unexpected command")
 	}
 }
+
+func TestPrepareOnlyEquivalentLineEndings(t *testing.T) {
+	c, _, specPath := fixture(t, "ok")
+	c.Spec.Inputs["source.txt"] = sum([]byte("first\nsecond\n"))
+	b, _ := json.Marshal(c.Spec)
+	os.WriteFile(specPath, b, 0600)
+	input := filepath.Join(c.Workspace, "source.txt")
+	os.WriteFile(input, []byte("first\r\nsecond\r\n"), 0600)
+	output := filepath.Join(t.TempDir(), "local.json")
+	if err := Prepare(specPath, c.Program, c.Workspace, output); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(output, c.Program, c.Workspace); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(output)
+	if err := Prepare(specPath, c.Program, c.Workspace, output); err == nil {
+		t.Fatal("replaced existing profile")
+	}
+	if after, _ := os.ReadFile(output); !bytes.Equal(before, after) {
+		t.Fatal("output changed")
+	}
+	os.WriteFile(input, []byte("other code\r\n"), 0600)
+	other := filepath.Join(t.TempDir(), "other.json")
+	if err := Prepare(specPath, c.Program, c.Workspace, other); !errors.Is(err, ErrInputs) {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(other); !os.IsNotExist(err) {
+		t.Fatal("created profile for changed source")
+	}
+	if _, err := os.Stat(filepath.Join(c.Workspace, "called.txt")); !os.IsNotExist(err) {
+		t.Fatal("prepare executed program")
+	}
+}

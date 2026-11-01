@@ -27,11 +27,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
 		fmt.Fprintln(stdout, "ACP: конечная местная проверка проекта")
-		fmt.Fprintln(stdout, "Команды: check, status, recover, gc. Для справки: acp check --help")
+		fmt.Fprintln(stdout, "Команды: prepare, check, status, recover, gc. Для справки: acp check --help")
 		return 0
 	}
 	command := args[0]
-	if command != "check" && command != "status" && command != "recover" && command != "gc" {
+	if command != "prepare" && command != "check" && command != "status" && command != "recover" && command != "gc" {
 		fmt.Fprintln(stderr, "Неизвестная команда")
 		return 2
 	}
@@ -42,11 +42,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var spec, program, workspace *string
 	var show *bool
 	var after, receipt *string
-	if command == "check" {
+	var profileOutput *string
+	if command == "check" || command == "prepare" {
 		spec = f.String("spec", "", "Файл доверенного профиля проверки JSON v1")
 		program = f.String("program", "", "Выбранная программа или её абсолютный путь")
 		workspace = f.String("workspace", "", "Каталог проверяемого проекта")
 		show = f.Bool("show-output", false, "Показать местный вывод программы; по умолчанию он не выводится и не сохраняется")
+	}
+	if command == "prepare" {
+		profileOutput = f.String("out", "", "Создать новый профиль только для точных исходников или их CRLF/LF-эквивалента")
 	}
 	if command == "gc" {
 		after = f.String("after", "", "Продолжить страницу очистки с state.Next предыдущего ответа")
@@ -57,6 +61,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 0
 		}
 		return 2
+	}
+	if command == "prepare" {
+		if f.NArg() != 0 || *spec == "" || *program == "" || *workspace == "" || *profileOutput == "" {
+			fmt.Fprintln(stderr, "Для prepare требуются --spec, --program, --workspace и --out")
+			return 2
+		}
+		path, err := exec.LookPath(*program)
+		if err != nil || localcheck.Prepare(*spec, path, *workspace, *profileOutput) != nil {
+			fmt.Fprintln(stderr, "Профиль не создан: проверьте исходники, программу и отсутствие выходного файла; разрешено только отличие CRLF/LF")
+			return 2
+		}
+		fmt.Fprintln(stdout, "Создан местный профиль; код проекта не изменялся")
+		return 0
 	}
 	if f.NArg() != 0 || *root == "" || (command != "gc" && *id == "") {
 		fmt.Fprintln(stderr, "Требуются --state и --task; у gc только --state")
