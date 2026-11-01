@@ -1,5 +1,9 @@
 # agent_control_plane
 
+Начать знакомство: [как всё будет устроено и работать, с примерами LanFabric и Struna](docs/how_it_works_ru.md).
+
+Практическая проба: [`acp check` на локальных проверках LanFabric](docs/local_check_quickstart_ru.md). Это конечный запуск выбранной доверенной программы с SQLite/state/evidence, без автоматического исправления проекта или развёртывания. [Решение](docs/decisions/0004-local-project-check-pilot.md), [проверки](docs/validation/local_check_pilot_2026-11-02.md).
+
 `agent_control_plane` — верхнеуровневый control plane для координации ChatGPT Web, локальных и удалённых workers/agents, разных моделей и долгоживущих или отложенных задач.
 
 ## Текущий статус
