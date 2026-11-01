@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "label": "lanfabric-local-checks",
+  "arguments": [
+    "-B",
+    "tests_local/run_local_checks.py"
+  ],
+  "timeout_seconds": 180,
+  "max_output_bytes": 65536,
+  "inputs": {
+    "deployment/awg31_service.py": "07fee5380cf892149f97eafc948733eb775aa7afcdd661aa11ce3ca2ddc42605",
+    "deployment/build_go_components.py": "5f8ed4be4c38369d05b32243f952de9323ddae8ba36d6d880b84c1db8d3cc6cf",
+    "deployment/publish_go_components.py": "95efcb0e24928a97c5518be731b5ac67b84498362e1fc926b1b002213c499a8e",
+    "tests_local/run_local_checks.py": "4fd42bf6c2cd413ccb4922bb8d15f4d342db43246949ac2ede2124003da43bd5",
+    "tests_local/test_awg31_service.py": "695a785efa2f387fa2d687cb40afaaa2bc982b935857d2b5e6993dffbc918496",
+    "tests_local/test_go_component_publication.py": "594a0a17693bca1a33fe1d93cd8f96dd65803a26fc6507532c684e3428e22564",
+    "tests_local/test_lanfabric_awg31_params.py": "270497aea7c3a6d1e6a511218f3d973c02fc873314db16d2d6440fc6f2d749db",
+    "tests_local/test_lanfabric_awg31_runtime_port.py": "8450e2fc6dff843419a8009e751d1a41ff208dfd409691fa390ab68c39eab0fb",
+    "tests_local/test_lanfabric_awg_go.py": "aae29761db5fcd9fc35a18a03c4bacf55b9f8db2b1804012c1f2b83efdb6ccf2",
+    "tests_local/test_lanfabric_awg_lifecycle_local.py": "73b5a3035a22ab5ea9dc58da6549319ffaca882081b2148386ddb3ea350a7ea9",
+    "tests_local/test_lanfabric_go_installation.py": "a69ef34fc2bbf9532f4be8e158b2c6381af361801ce49859b36b94dffdea8c0c",
+    "tests_local/test_lanfabric_go_update.py": "1d68f6edb6117e3ba4dc6b378d5734933619664746e5b9de5dd8f3de9e18f8a7",
+    "tests_local/test_lanfabric_init_local.py": "67b63b861740f90c453f62f0c2362320c6b06f0ada8f955093a022a96a625539",
+    "tests_local/test_lanfabric_python_runtime.py": "bcb1deda071abb689cc04474495f9b7b43ed544d5e8b42923d4a86fc91c2b03d",
+    "tests_local/test_lanfabric_ssh_stream_timeout.py": "ad10230b00fdd88cb73a834883e422b9e009a71e78d6af4c3339a84a85d74a93",
+    "tests_local/test_lanfabric_stabilization.py": "01a6313721d9998e6626d7774f8c7e0c58af84eeb3acf2a63eaa5a2a5d2569c5",
+    "tests_local/test_lanfabric_trust_local.py": "ff3add0e629ced9daff0569413cd2ab1ae09ddd737244bf93103065c2971f152",
+    "tests_local/test_lanfabric_wan_policy_local.py": "7fde9d320b49de1c3abe86380357ebec7cbdc08b171c061bf6a03048a37377ec",
+    "tests_local/test_lanfabric_windows_full_tunnel.py": "775c590c78be1a5647c5ed8dd6f4e1a6bcd5e69c3df1e9a2f2b9c0a226003d11",
+    "tests_local/test_run_local_checks.py": "ae1634cbe22a4723293f05138ade65040fdfd8d3e4418ddeb89edbf8a1fa27a6",
+    "vcli-admin.py": "7c53d197bad30d63e0a3007ed5fe8095954fc38dc3aca5a42aa21ecabdc8d8c7",
+    "vsrv-admin.py": "d77699103a4af2ba8660d69a46caa25ac023724f5d40abbd75654ff52f97900e"
+  }
+}
