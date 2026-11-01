@@ -203,7 +203,15 @@ func TestFailureAndCancellationRemainUnknown(t *testing.T) {
 			return Claim{}, errors.New("password=must-never-persist")
 		}, Failed},
 		{"panic redaction", func(context.Context, ProviderRequest) (Claim, error) { panic("private provider detail") }, Failed},
-		{"timeout", func(ctx context.Context, _ ProviderRequest) (Claim, error) { <-ctx.Done(); return Claim{}, ctx.Err() }, TimedOut},
+		{"timeout", func(ctx context.Context, _ ProviderRequest) (Claim, error) {
+			// This case asserts a timeout after provider entry. Starting its
+			// budget before admission/SQLite can expire before the provider is
+			// called under race/CI load, which legitimately gives zero calls.
+			ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+			defer cancel()
+			<-ctx.Done()
+			return Claim{}, ctx.Err()
+		}, TimedOut},
 		{"oversize output", func(context.Context, ProviderRequest) (Claim, error) {
 			return Claim{Output: strings.Repeat("x", 1025)}, nil
 		}, Budget},
@@ -214,13 +222,7 @@ func TestFailureAndCancellationRemainUnknown(t *testing.T) {
 			stores(t, func(t *testing.T, s *core.Store) {
 				p := &fakeProvider{run: tc.run}
 				r, req, _ := setup(t, s, p)
-				ctx := bg
-				var cancel context.CancelFunc
-				if tc.name == "timeout" {
-					ctx, cancel = context.WithTimeout(bg, 100*time.Millisecond)
-					defer cancel()
-				}
-				out, err := r.Execute(ctx, req)
+				out, err := r.Execute(bg, req)
 				if err != nil || out.Disposition != Unknown || out.Reason != tc.want {
 					t.Fatalf("%+v %v", out, err)
 				}
@@ -247,6 +249,39 @@ func TestFailureAndCancellationRemainUnknown(t *testing.T) {
 			})
 		})
 	}
+}
+
+type cancelAtDispatchPolicy struct {
+	base   Policy
+	cancel context.CancelFunc
+}
+
+func (p cancelAtDispatchPolicy) Check(j Job, c Capabilities, at time.Time) error {
+	if j.Generation > 0 {
+		p.cancel()
+	}
+	return p.base.Check(j, c, at)
+}
+
+func TestCancellationBeforeDispatchNeverRetries(t *testing.T) {
+	stores(t, func(t *testing.T, s *core.Store) {
+		p := &fakeProvider{run: normal}
+		r, req, _ := setup(t, s, p)
+		ctx, cancel := context.WithCancel(bg)
+		defer cancel()
+		r.policy = cancelAtDispatchPolicy{base: r.policy, cancel: cancel}
+		out, err := r.Execute(ctx, req)
+		if err != nil || out.Disposition != Unknown || out.Reason != Cancelled || p.calls.Load() != 0 {
+			t.Fatalf("out=%+v err=%v calls=%d", out, err, p.calls.Load())
+		}
+		if getOp(t, s).State != state.OperationUnknownOutcome {
+			t.Fatal("pre-dispatch cancellation invented certainty")
+		}
+		dup, err := r.Execute(bg, req)
+		if err != nil || dup.Disposition != Duplicate || p.calls.Load() != 0 {
+			t.Fatalf("replay=%+v err=%v calls=%d", dup, err, p.calls.Load())
+		}
+	})
 }
 func TestConcurrentDuplicateOffer(t *testing.T) {
 	stores(t, func(t *testing.T, s *core.Store) {

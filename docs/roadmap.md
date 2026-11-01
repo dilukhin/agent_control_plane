@@ -17,15 +17,15 @@ Roadmap не заменяет `docs/project_baseline.md`. Baseline остаёт�
 
 ## 2. Текущее состояние
 
-Состояние с реализацией R3.3 от 2026-09-19 (результаты приёмки точных commits — в PR и #10):
+Состояние с реализацией местного R5 от 2026-11-01 (точные commits и CI — в PR, #10–#12 и датированных отчётах):
 
 - foundation, R1, Gate A, R2 и Gate B завершены;
 - Go reference core использует общий persistence boundary с memory и SQLite; есть общий контрактный набор тестов;
 - exact validation R2 на Go 1.27.1 зафиксирована в docs/validation/r2-go-1.27.1.md;
 - SQLite persistence/schema migrations/atomic operations реализованы в R3.1 по ADR-0002; R3.2 реализует восстановление и отзыв полномочий; R3.3 — ограниченное хранение, очистку и обслуживание SQLite;
-- topology, первый transport и конкретные providers не выбраны;
+- первый transport выбран Gate C: местный процесс и стандартные потоки; постоянная topology и реальные providers не выбраны;
 - минимальный CI добавлен PR #14, #9 закрыта: native tests/vet/build Windows/Linux и Linux race/gofmt; успешные runs перечислены в work_plan_ru.md;
-- R3 (#10) и R4 (#11) приняты в main; [контракт исполнителей и поставщиков](worker_provider_contract.md), [приёмка R4](validation/MN-05-R4_acceptance_2026-11-01.md). Следующий этап — R5 (#12), затем R6 (#8).
+- R3 (#10), R4 (#11) и местный reference transport R5 (#12) реализованы; [приёмка R4](validation/MN-05-R4_acceptance_2026-11-01.md), [договор R5](process_transport.md), [его проверки](validation/R5_process_transport_2026-11-01.md). Далее R6 (#8) после готового контракта знаний; remote/deploy не подтверждены.
 
 Текущий порядок и критерии завершения: [work_plan_ru.md](work_plan_ru.md). Начальное состояние «только foundation» является историей проекта, а не текущим статусом.
 
@@ -182,6 +182,8 @@ R2 не обязан иметь daemon, remote transport, provider SDK или du
 
 Провести одну задачу через реальный transport, не передавая transport ownership workflow state.
 
+Первый реализованный сценарий — [местный процесс и стандартные потоки](process_transport.md), по принятому Gate C. Сетевые варианты ниже остаются следующими кандидатами, не второй реализацией этого этапа.
+
 ### Кандидаты
 
 - local IPC для локального worker;
@@ -296,6 +298,8 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 ### Gate C — first transport
 
+**Статус: принят 2026-11-01.** [ADR-0003](decisions/0003-first-transport.md) выбирает местный процессный эталон для первого R5; ssh_relay — отдельная последующая интеграция. [Договор](process_transport.md), [проверки](validation/R5_process_transport_2026-11-01.md).
+
 Открывается перед R5. Выбор определяется первым реальным E2E сценарием; transport contract остаётся внешним к core.
 
 ### Gate D — provider/model routing
@@ -306,7 +310,7 @@ Watchdog/deferred escalation (R6) является следующим обяза
 
 R1, Gate A, R2 и Gate B завершены. Exact-toolchain validation R2 на Go 1.27.1 также выполнена.
 
-Минимальный CI Windows/Linux (#9) подтверждён и задача закрыта. Транзакционное хранилище R3.1 реализовано. R3.2 recovery и R3.3 retention/GC также реализованы отдельными изменениями. R4 (#11) принят; контракт и ограничения — [worker_provider_contract.md](worker_provider_contract.md). Следующая задача — #12 (R5), сначала отдельное решение Gate C; [предлагаемая редакция](decisions/0003-first-transport.md) ещё не является принятым выбором. Затем runtime-часть #8. Подробности: [work_plan_ru.md](work_plan_ru.md).
+Минимальный CI Windows/Linux (#9) подтверждён и задача закрыта. Транзакционное хранилище R3.1 реализовано. R3.2 recovery и R3.3 retention/GC также реализованы отдельными изменениями. R4 (#11) принят; контракт и ограничения — [worker_provider_contract.md](worker_provider_contract.md). Gate C принят; R5 реализует [местный процессный путь](process_transport.md). Следующая работа — runtime-часть #8 после подтверждения контракта ScopedKB; реальный удалённый путь развивается отдельно. Подробности: [work_plan_ru.md](work_plan_ru.md).
 
 Объём завершённого R3:
 
