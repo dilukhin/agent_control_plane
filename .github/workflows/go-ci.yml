@@ -2,7 +2,7 @@ name: Go CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, agent/mn-05-r4-worker-contracts]
   push:
     branches: [main]
 
