@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"runtime"
 	"sync"
 	"time"
 
@@ -73,7 +74,13 @@ func (w *commandWorker) Accept(j execution.Job) error {
 
 func commandEnv() []string {
 	env := make([]string, 0, 10)
-	for _, k := range []string{"SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PATH"} {
+	keys := []string{"SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PATH"}
+	// Trusted local checks need the standard Windows home-directory contract.
+	// Keep the allowlist explicit; do not inherit credentials or the full environment.
+	if runtime.GOOS == "windows" {
+		keys = append(keys, "USERPROFILE")
+	}
+	for _, k := range keys {
 		if v, ok := os.LookupEnv(k); ok {
 			env = append(env, k+"="+v)
 		}
