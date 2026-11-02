@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -47,6 +48,12 @@ func TestLocalCommandHelper(t *testing.T) {
 		os.WriteFile("source.txt", []byte("changed"), 0600)
 	case "env":
 		fmt.Print(os.Getenv("ACP_TEST_PRIVATE_VALUE"))
+	case "home":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			os.Exit(10)
+		}
+		fmt.Print(home)
 	case "gate":
 		deadline := time.Now().Add(8 * time.Second)
 		for time.Now().Before(deadline) {
@@ -169,6 +176,34 @@ func TestEnvironmentNotInherited(t *testing.T) {
 	r, output, err := Check(context.Background(), root, "environment", c)
 	if err != nil || len(output) != 0 || r.Operation != state.OperationSucceeded {
 		t.Fatalf("%+v %v bytes=%d", r, err, len(output))
+	}
+}
+
+func TestWindowsHomeAvailableToChild(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows home-directory contract")
+	}
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	c, root, _ := fixture(t, "home")
+	r, output, err := Check(context.Background(), root, "windows-home", c)
+	if err != nil || string(output) != home || r.Operation != state.OperationSucceeded {
+		t.Fatalf("child could not resolve configured home: operation=%s err=%v", r.Operation, err)
+	}
+}
+
+func TestCommandEnvironmentExcludesCredentials(t *testing.T) {
+	privateKeys := []string{"ACP_TEST_PRIVATE_VALUE", "OPENAI_API_KEY", "SSH_AUTH_SOCK", "AWS_SECRET_ACCESS_KEY", "HTTP_PROXY", "HOME"}
+	for _, key := range privateKeys {
+		t.Setenv(key, "must-not-reach-child")
+	}
+	for _, entry := range commandEnv() {
+		key, _, _ := strings.Cut(entry, "=")
+		for _, private := range privateKeys {
+			if strings.EqualFold(key, private) {
+				t.Fatalf("private environment key inherited: %s", key)
+			}
+		}
 	}
 }
 
