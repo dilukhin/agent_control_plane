@@ -1,0 +1,331 @@
+{
+  "entities": [],
+  "subjects": [
+    {
+      "schema_version": "2.0.0",
+      "id": "subject:person:example-reviewer",
+      "type": "person",
+      "scope": "common",
+      "sensitivity": "public",
+      "tags": [
+        "fixture"
+      ],
+      "name": "Example Reviewer",
+      "status": "active",
+      "trust_level": "operator"
+    },
+    {
+      "schema_version": "2.0.0",
+      "id": "subject:agent:example-agent",
+      "type": "agent",
+      "scope": "common",
+      "sensitivity": "public",
+      "tags": [
+        "fixture"
+      ],
+      "name": "Example Agent",
+      "status": "active",
+      "trust_level": "operator"
+    },
+    {
+      "schema_version": "2.0.0",
+      "id": "subject:tool:example-checker",
+      "type": "tool",
+      "scope": "common",
+      "sensitivity": "public",
+      "tags": [
+        "fixture"
+      ],
+      "name": "Example Checker",
+      "status": "active",
+      "trust_level": "operator"
+    },
+    {
+      "schema_version": "2.0.0",
+      "id": "subject:model:example-alpha",
+      "type": "model",
+      "scope": "common",
+      "sensitivity": "public",
+      "tags": [
+        "fixture"
+      ],
+      "name": "Example Model Alpha",
+      "status": "active",
+      "trust_level": "operator",
+      "model_identity": {
+        "basis": "provider-stable-id"
+      }
+    }
+  ],
+  "repositories": [
+    {
+      "schema_version": "2.0.0",
+      "id": "repository:example-common",
+      "type": "repository",
+      "scope": "common",
+      "sensitivity": "public",
+      "tags": [
+        "fixture"
+      ],
+      "name": "Example common",
+      "repository_kind": "common",
+      "status": "active",
+      "canonical_branch": "main",
+      "write_policy": "single-writer",
+      "owner_subject": "subject:person:example-reviewer",
+      "destination_policy": {
+        "allowed_scopes": [
+          "common"
+        ],
+        "allowed_sensitivities": [
+          "public"
+        ],
+        "forbidden_identifier_classes": [
+          "absolute-path",
+          "personal-identifier"
+        ],
+        "require_evidence_for_verified": true,
+        "require_review": true
+      }
+    }
+  ],
+  "replicas": [],
+  "artifacts": [
+    {
+      "schema_version": "2.0.0",
+      "id": "artifact:local-check-evidence",
+      "type": "artifact",
+      "scope": "common",
+      "sensitivity": "public",
+      "tags": [
+        "fixture"
+      ],
+      "name": "Искусственный артефакт",
+      "status": "available",
+      "artifact_type": "evidence-receipt",
+      "produced_by": [
+        "subject:tool:example-checker"
+      ],
+      "created_at": "2026-01-01T00:00:00Z",
+      "disposition": "retained",
+      "content": {
+        "storage": "content-addressed",
+        "sha256": "e177ff4a180b03cb8ee46cbc004a70967fb0140497b6f3eeb40d719de35df6ba",
+        "size_bytes": 23,
+        "media_type": "text/plain",
+        "encoding": "utf-8",
+        "ref": "sha256:e177ff4a180b03cb8ee46cbc004a70967fb0140497b6f3eeb40d719de35df6ba"
+      },
+      "identifier_classes": [],
+      "retention": {
+        "policy": "keep"
+      }
+    }
+  ],
+  "facts": [
+    {
+      "schema_version": "2.0.0",
+      "id": "fact.example.quality",
+      "claim_type": "observation",
+      "scope": "common",
+      "status": "observed",
+      "statement": "Искусственная проверка, профиль minimal.",
+      "provenance": {
+        "observed_by": [
+          "subject:tool:example-checker"
+        ],
+        "recorded_by": [
+          "subject:agent:example-agent"
+        ],
+        "inferred_by": [],
+        "verified_by": [],
+        "method": "test-fixture",
+        "observed_at": "2026-01-01T00:00:00Z"
+      },
+      "target": [
+        "task-class:windows-check",
+        "subject:model:example-alpha"
+      ],
+      "applies_to": [],
+      "confidence": "medium",
+      "verification": {
+        "status": "unverified",
+        "method": "none",
+        "evidence": []
+      },
+      "supersedes": [],
+      "contradicts": [],
+      "tags": [
+        "fixture"
+      ],
+      "sensitivity": "public",
+      "identifier_classes": [],
+      "owner_repository": "repository:example-common",
+      "measurements": [
+        {
+          "metric": "failed-tests",
+          "unit": "tests",
+          "value": 5,
+          "qualifiers": [
+            {
+              "key": "profile",
+              "value": "minimal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schema_version": "2.0.0",
+      "id": "fact.example.repeated-quality",
+      "claim_type": "observation",
+      "scope": "common",
+      "status": "observed",
+      "statement": "Искусственная проверка, профиль with-home.",
+      "provenance": {
+        "observed_by": [
+          "subject:tool:example-checker"
+        ],
+        "recorded_by": [
+          "subject:agent:example-agent"
+        ],
+        "inferred_by": [],
+        "verified_by": [],
+        "method": "test-fixture",
+        "observed_at": "2026-01-02T00:00:00Z"
+      },
+      "target": [
+        "task-class:windows-check",
+        "subject:model:example-alpha"
+      ],
+      "applies_to": [],
+      "confidence": "medium",
+      "verification": {
+        "status": "unverified",
+        "method": "none",
+        "evidence": []
+      },
+      "supersedes": [],
+      "contradicts": [],
+      "tags": [
+        "fixture"
+      ],
+      "sensitivity": "public",
+      "identifier_classes": [],
+      "owner_repository": "repository:example-common",
+      "measurements": [
+        {
+          "metric": "failed-tests",
+          "unit": "tests",
+          "value": 0,
+          "qualifiers": [
+            {
+              "key": "profile",
+              "value": "with-home"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schema_version": "2.0.0",
+      "id": "fact.example.review-windows-home",
+      "claim_type": "recommendation",
+      "scope": "common",
+      "status": "candidate",
+      "statement": "Для искусственной проверки Windows передать USERPROFILE из разрешённого окружения.",
+      "provenance": {
+        "observed_by": [],
+        "recorded_by": [
+          "subject:agent:example-agent"
+        ],
+        "inferred_by": [
+          "subject:agent:example-agent"
+        ],
+        "verified_by": [],
+        "method": "test-fixture",
+        "observed_at": "2026-01-01T00:00:00Z"
+      },
+      "target": [
+        "task-class:windows-check"
+      ],
+      "applies_to": [
+        "task-class:windows-check"
+      ],
+      "confidence": "medium",
+      "verification": {
+        "status": "unverified",
+        "method": "none",
+        "evidence": [
+          "artifact:local-check-evidence"
+        ]
+      },
+      "supersedes": [],
+      "contradicts": [],
+      "tags": [
+        "fixture"
+      ],
+      "sensitivity": "public",
+      "identifier_classes": [],
+      "owner_repository": "repository:example-common",
+      "review_after": "2026-06-01"
+    }
+  ],
+  "relations": [
+    {
+      "schema_version": "2.0.0",
+      "id": "relation:review-windows-home-0",
+      "type": "derived-from",
+      "scope": "common",
+      "sensitivity": "public",
+      "tags": [
+        "fixture"
+      ],
+      "source": "fact.example.review-windows-home",
+      "target": "fact.example.quality",
+      "status": "active"
+    },
+    {
+      "schema_version": "2.0.0",
+      "id": "relation:review-windows-home-1",
+      "type": "derived-from",
+      "scope": "common",
+      "sensitivity": "public",
+      "tags": [
+        "fixture"
+      ],
+      "source": "fact.example.review-windows-home",
+      "target": "fact.example.repeated-quality",
+      "status": "active"
+    }
+  ],
+  "nodes": [],
+  "task_classes": [
+    {
+      "schema_version": "2.0.0",
+      "id": "task-class:windows-check",
+      "type": "task-class",
+      "scope": "common",
+      "sensitivity": "public",
+      "tags": [
+        "fixture"
+      ],
+      "name": "Проверка Windows",
+      "description": "Искусственный класс проверки",
+      "status": "active"
+    }
+  ],
+  "source_systems": [],
+  "source_accounts": [],
+  "source_containers": [],
+  "source_items": [],
+  "source_revisions": [],
+  "source_attachments": [],
+  "source_relations": [],
+  "extracted_fragments": [],
+  "import_runs": [],
+  "import_receipts": [],
+  "proposals": [],
+  "publication_receipts": [],
+  "schema_version": "2.0.0"
+}
