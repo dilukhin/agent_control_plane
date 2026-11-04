@@ -19,6 +19,7 @@ import (
 )
 
 var ErrExisting = errors.New("задание уже существует: используйте status или recover; повторный запуск запрещён")
+var ErrTaskNotFound = errors.New("task_not_found")
 var ErrReceipt = errors.New("нет достаточной сохранённой квитанции завершения; исход требует отдельной проверки")
 
 const marker = "ACP trusted local checks v1\n"
@@ -291,6 +292,9 @@ func finalize(ctx context.Context, s *core.Store, id string) error {
 
 func status(ctx context.Context, s *core.Store, root, id string) (Result, error) {
 	task, err := s.GetTask(ctx, protocol.TaskID(id))
+	if errors.Is(err, core.ErrNotFound) {
+		return Result{}, ErrTaskNotFound
+	}
 	if err != nil {
 		return Result{}, err
 	}

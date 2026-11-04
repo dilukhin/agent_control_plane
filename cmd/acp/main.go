@@ -119,6 +119,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if err != nil {
 		switch {
+		case command == "status" && errors.Is(err, localcheck.ErrTaskNotFound):
+			fmt.Fprintln(stderr, localcheck.ErrTaskNotFound)
 		case errors.Is(err, localcheck.ErrExisting):
 			fmt.Fprintln(stderr, localcheck.ErrExisting)
 		case errors.Is(err, localcheck.ErrReceipt):
