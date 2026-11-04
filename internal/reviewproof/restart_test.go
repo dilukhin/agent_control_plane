@@ -141,6 +141,12 @@ func TestWriterProcess(t *testing.T) {
 	defer store.Close()
 
 	mode := os.Getenv("ACP_REVIEW_PROOF_MODE")
+	if mode == "git-adapter" {
+		must(t, json.Unmarshal(read(t, filepath.Join(root, "plan.json")), &i))
+		must(t, begin(t, ctx, store, i, nil))
+		gitAdapter(t, ctx, root, "write")
+		os.Exit(42)
+	}
 	if mode == "rollback" {
 		interrupted := errors.New("synthetic failure before commit")
 		if err := begin(t, ctx, store, i, interrupted); !errors.Is(err, interrupted) {
@@ -167,7 +173,7 @@ func TestWriterProcess(t *testing.T) {
 	os.Exit(42)
 }
 
-func restore(t *testing.T, ctx context.Context, store *core.Store, root string, i intent) state.Operation {
+func restore(t *testing.T, ctx context.Context, store *core.Store, i intent, observe func() (string, error)) state.Operation {
 	t.Helper()
 	op, err := store.GetOperation(ctx, opID)
 	must(t, err)
@@ -204,9 +210,8 @@ func restore(t *testing.T, ctx context.Context, store *core.Store, root string, 
 	if op.State != state.OperationUnknownOutcome {
 		t.Fatalf("unexpected state after revocation: %s", op.State)
 	}
-	actual, err := os.ReadFile(resultPath(t, root, i))
-	base, baseErr := os.ReadFile(filepath.Join(root, "knowledge", "base.json"))
-	if err != nil || baseErr != nil || digest(actual) != i.ResultDigest || digest(base) != i.BaseDigest {
+	actualDigest, err := observe()
+	if err != nil || actualDigest != i.ResultDigest {
 		return op
 	}
 	env := envelope("review-confirmed", "verification.completed", verifier, now)
@@ -220,7 +225,7 @@ func restore(t *testing.T, ctx context.Context, store *core.Store, root string, 
 			ID: "readback", TaskID: taskID, OperationID: opID, AttemptID: attemptID,
 			Kind: evidence.KindTargetObservation, SourceActorID: verifier, ObservedAt: now,
 			SubjectRef: i.Target, Summary: "Совпали ожидаемая редакция и байты кандидата",
-			Digest: digest(actual),
+			Digest: actualDigest,
 		}
 		if err := tx.RegisterEvidence(observation); err != nil {
 			return err
@@ -295,7 +300,21 @@ func TestReviewWriteRecoveryAfterProcessExit(t *testing.T) {
 			if mode == "stale-base" {
 				must(t, os.WriteFile(filepath.Join(knowledge, "base.json"), []byte("{}"), 0600))
 			}
-			op := restore(t, ctx, store, root, i)
+			observe := func() (string, error) {
+				base, err := os.ReadFile(filepath.Join(knowledge, "base.json"))
+				if err != nil {
+					return "", err
+				}
+				if digest(base) != i.BaseDigest {
+					return "", errors.New("base revision changed")
+				}
+				actual, err := os.ReadFile(path)
+				if err != nil {
+					return "", err
+				}
+				return digest(actual), nil
+			}
+			op := restore(t, ctx, store, i, observe)
 			want := state.OperationUnknownOutcome
 			if mode == "saved" {
 				want = state.OperationSucceeded
@@ -303,7 +322,7 @@ func TestReviewWriteRecoveryAfterProcessExit(t *testing.T) {
 			if op.State != want || op.LeaseGeneration != 1 {
 				t.Fatalf("recovered=%s generation=%d", op.State, op.LeaseGeneration)
 			}
-			again := restore(t, ctx, store, root, i)
+			again := restore(t, ctx, store, i, observe)
 			if again.Revision != op.Revision || again.State != want {
 				t.Fatalf("replay changed recovered operation: %+v", again)
 			}
