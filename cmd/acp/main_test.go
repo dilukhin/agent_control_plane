@@ -80,6 +80,21 @@ func TestCLIRealCommandStatusAndFailure(t *testing.T) {
 			if code := run([]string{"status", "--state", root, "--task", "cli-check"}, &out, &err); code != want {
 				t.Fatalf("status %d %s", code, err.String())
 			}
+			for _, tc := range []struct {
+				root        string
+				wantMissing bool
+			}{
+				{root: root, wantMissing: true},
+				{root: filepath.Join(t.TempDir(), "missing-state")},
+			} {
+				out.Reset()
+				err.Reset()
+				code := run([]string{"status", "--state", tc.root, "--task", "missing-task"}, &out, &err)
+				missing := strings.TrimSpace(err.String()) == "task_not_found"
+				if code != 2 || missing != tc.wantMissing || out.Len() != 0 {
+					t.Fatalf("missing task vs unavailable state: code=%d stdout=%q stderr=%q", code, out.String(), err.String())
+				}
+			}
 			out.Reset()
 			err.Reset()
 			if code := run(args, &out, &err); code != 2 {
