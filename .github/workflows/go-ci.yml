@@ -52,6 +52,53 @@ jobs:
       - name: Pure-Go build
         run: go build ./...
 
+      - name: Checkout the verified ScopedKB adapter
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: dilukhin/scopedkb
+          ref: e48b8f1e4db3940dafa6ac529c3e1319155f956b
+          path: .scopedkb-r6
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+      - name: Verify R6 recovery against the ScopedKB Git adapter
+        run: |
+          export ACP_REVIEW_SCOPEDKB_ROOT="$(python -c 'from pathlib import Path; print(Path(".scopedkb-r6").resolve())')"
+          export ACP_REVIEW_PYTHON="$(python -c 'import sys; print(sys.executable)')"
+          go test -count=1 -timeout=2m -v ./internal/reviewproof -run '^TestGitAdapterAcrossProcesses    name: race and format (linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      CGO_ENABLED: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Verify toolchain
+        run: |
+          go version
+          test "$(go env GOVERSION)" = "go1.27.1"
+          go env GOOS GOARCH CGO_ENABLED GOTOOLCHAIN
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: Race tests
+        run: go test -race -count=1 -timeout=5m ./...
+
+
   race-format:
     name: race and format (linux)
     runs-on: ubuntu-24.04
